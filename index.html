@@ -1,0 +1,290 @@
+<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#1f8a5b" />
+  <meta name="description" content="I Have Money v4 - แอปจดรายรับรายจ่าย ใช้ง่าย มีปฏิทิน งบประมาณ กราฟ Backup และหมวดกำหนดเอง" />
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="I Have Money" />
+  <link rel="stylesheet" href="styles.css" />
+  <title>I Have Money v4</title>
+</head>
+<body>
+  <div id="authScreen" class="auth-screen">
+    <div class="brand-card">
+      <div class="brand-logo">💰</div>
+      <p class="eyebrow">Personal money journal</p>
+      <h1>I Have Money</h1>
+      <p class="lead">จดรายรับรายจ่ายเอง เห็นรายวันในปฏิทิน สรุปชัดทุกเดือน</p>
+    </div>
+
+    <section class="auth-card">
+      <div class="auth-tabs" role="tablist">
+        <button id="loginTab" class="auth-tab active" type="button">เข้าสู่ระบบ</button>
+        <button id="signupTab" class="auth-tab" type="button">สมัครใช้งาน</button>
+      </div>
+
+      <form id="loginForm" class="auth-form">
+        <label>อีเมล
+          <input id="loginEmail" type="email" autocomplete="email" placeholder="you@example.com" required />
+        </label>
+        <label>รหัสผ่าน
+          <input id="loginPassword" type="password" autocomplete="current-password" placeholder="อย่างน้อย 6 ตัว" required />
+        </label>
+        <button class="primary-btn" type="submit">เข้าสู่ระบบ</button>
+        <button id="demoLogin" class="ghost-btn" type="button">ทดลองใช้งานด้วยบัญชีตัวอย่าง</button>
+      </form>
+
+      <form id="signupForm" class="auth-form hidden">
+        <label>ชื่อผู้ใช้
+          <input id="signupName" type="text" autocomplete="name" placeholder="เช่น คุณแฮนด์" required />
+        </label>
+        <label>อีเมล
+          <input id="signupEmail" type="email" autocomplete="email" placeholder="you@example.com" required />
+        </label>
+        <label>รหัสผ่าน
+          <input id="signupPassword" type="password" autocomplete="new-password" minlength="6" placeholder="อย่างน้อย 6 ตัว" required />
+        </label>
+        <button class="primary-btn" type="submit">สร้างบัญชี</button>
+        <p class="hint">เวอร์ชันนี้เป็นต้นแบบ เก็บบัญชีไว้ในเครื่องก่อน ต่อจริงกับ Supabase ได้ในขั้นถัดไป</p>
+      </form>
+    </section>
+  </div>
+
+  <div id="appShell" class="app-shell hidden">
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">I Have Money</p>
+        <h1 id="greeting">สวัสดี</h1>
+        <p id="syncStatus" class="sync-status">Local only</p>
+      </div>
+      <div class="top-actions">
+        <button id="syncNow" class="icon-btn" aria-label="Sync ข้อมูล">🔄</button>
+        <button id="themeToggle" class="icon-btn" aria-label="เปลี่ยนโหมดสี">🌙</button>
+      </div>
+    </header>
+
+    <main>
+      <section id="dashboard" class="view active">
+        <section class="balance-card">
+          <div>
+            <p>ยอดคงเหลือเดือนนี้</p>
+            <strong id="monthBalance">฿0</strong>
+          </div>
+          <div class="mini-summary">
+            <span class="income">รับ <b id="monthIncome">฿0</b></span>
+            <span class="expense">จ่าย <b id="monthExpense">฿0</b></span>
+          </div>
+        </section>
+
+        <section class="quick-grid">
+          <article><span>วันนี้</span><strong id="todayNet">฿0</strong></article>
+          <article><span>สัปดาห์นี้</span><strong id="weekNet">฿0</strong></article>
+          <article><span>จำนวนรายการ</span><strong id="monthCount">0</strong></article>
+        </section>
+
+        <section class="panel calendar-panel">
+          <div class="panel-head calendar-head">
+            <button id="prevMonth" class="icon-btn" aria-label="เดือนก่อนหน้า">‹</button>
+            <h2 id="calendarTitle">เดือน</h2>
+            <button id="nextMonth" class="icon-btn" aria-label="เดือนถัดไป">›</button>
+          </div>
+          <div class="weekday-row"><span>จ</span><span>อ</span><span>พ</span><span>พฤ</span><span>ศ</span><span>ส</span><span>อา</span></div>
+          <div id="calendarGrid" class="calendar-grid"></div>
+        </section>
+
+        <section class="panel report-panel">
+          <div class="panel-head">
+            <h2 id="selectedDateTitle">รายการวันนี้</h2>
+            <span id="selectedDateTotal" class="pill">฿0</span>
+          </div>
+          <div id="transactionList" class="transaction-list empty"></div>
+        </section>
+      </section>
+
+      <section id="add" class="view">
+        <section class="panel input-panel">
+          <div class="panel-head">
+            <h2>เพิ่มรายการ</h2>
+            <button id="clearForm" class="text-btn">ล้าง</button>
+          </div>
+          <form id="transactionForm">
+            <input type="hidden" id="editId" />
+            <label>วันที่<input type="date" id="date" required /></label>
+            <div class="segmented" role="tablist" aria-label="ประเภทรายการ">
+              <button type="button" class="seg active" data-type="income">รายรับ</button>
+              <button type="button" class="seg" data-type="expense">รายจ่าย</button>
+            </div>
+            <label>จำนวนเงิน<input type="number" id="amount" inputmode="decimal" min="0" step="0.01" placeholder="เช่น 250" required /></label>
+            <label>หมวดหมู่
+              <input type="text" id="customCategory" list="categorySuggestions" placeholder="เลือกจากปุ่มด้านล่าง หรือพิมพ์เอง เช่น ค่าแมว / ลูกค้า A" required />
+              <select id="category" class="hidden" aria-hidden="true" tabindex="-1"></select>
+              <datalist id="categorySuggestions"></datalist>
+              <div id="categoryChips" class="category-chips" aria-label="หมวดที่ใช้ได้"></div>
+              <span class="hint">พิมพ์หมวดใหม่ได้ทันที ระบบจะบันทึกไว้ให้เลือกครั้งถัดไปอัตโนมัติ</span>
+            </label>
+            <label>รายละเอียด<input type="text" id="note" placeholder="เช่น กาแฟ / เงินเดือน / ค่าส่งของ" /></label>
+            <label>แนบรูปใบเสร็จ
+              <input type="file" id="receipt" accept="image/*" />
+              <span class="hint">บีบอัดรูปและเก็บในเครื่อง เหมาะกับภาพใบเสร็จ 1 รูปต่อรายการ</span>
+            </label>
+            <div id="receiptPreview" class="receipt-preview hidden"></div>
+            <button class="primary-btn" type="submit" id="submitBtn">บันทึก</button>
+          </form>
+        </section>
+      </section>
+
+      <section id="budget" class="view">
+        <section class="panel">
+          <div class="panel-head">
+            <h2>ตั้งงบประมาณรายหมวด</h2>
+            <span class="pill" id="budgetMonthTitle">เดือนนี้</span>
+          </div>
+          <form id="budgetForm" class="budget-form">
+            <label>หมวดรายจ่าย
+              <input id="budgetCustomCategory" type="text" list="expenseCategorySuggestions" placeholder="เลือกจากปุ่มด้านล่าง หรือพิมพ์เอง เช่น ค่าโฆษณา" required />
+              <select id="budgetCategory" class="hidden" aria-hidden="true" tabindex="-1"></select>
+              <datalist id="expenseCategorySuggestions"></datalist>
+              <div id="budgetCategoryChips" class="category-chips" aria-label="หมวดงบประมาณ"></div>
+            </label>
+            <label>งบต่อเดือน<input id="budgetAmount" type="number" inputmode="decimal" min="0" step="1" placeholder="เช่น 5000" required /></label>
+            <button class="primary-btn" type="submit">บันทึกงบ</button>
+          </form>
+        </section>
+        <section class="panel">
+          <div class="panel-head"><h2>การใช้งบเดือนนี้</h2><span id="budgetTotal" class="pill">฿0</span></div>
+          <div id="budgetList" class="category-report"></div>
+        </section>
+      </section>
+
+      <section id="reports" class="view">
+        <section class="panel">
+          <div class="panel-head">
+            <h2>กราฟรายเดือน</h2>
+            <button id="exportCsv" class="text-btn">Export CSV</button>
+          </div>
+          <canvas id="monthlyChart" width="420" height="240" aria-label="กราฟรายเดือน"></canvas>
+        </section>
+        <section class="panel category-panel">
+          <div class="panel-head"><h2>สรุปตามหมวดเดือนนี้</h2></div>
+          <div id="categoryReport" class="category-report"></div>
+        </section>
+      </section>
+
+      <section id="settings" class="view">
+        <section class="panel theme-panel">
+          <div class="panel-head"><h2>Theme สีของแอป</h2><span id="themePreviewText" class="pill">Money Green</span></div>
+          <div class="settings-grid">
+            <label>โหมดพื้นหลัง
+              <select id="appearanceMode">
+                <option value="light">Light</option>
+                <option value="dark">Dark</option>
+              </select>
+            </label>
+            <label>สีหลักของแอป
+              <select id="accentTheme">
+                <option value="green">Money Green</option>
+                <option value="blue">Trust Blue</option>
+                <option value="purple">Premium Purple</option>
+                <option value="rose">Soft Rose</option>
+                <option value="amber">Warm Amber</option>
+                <option value="slate">Minimal Slate</option>
+              </select>
+            </label>
+          </div>
+          <div id="themeSwatches" class="theme-swatches" aria-label="เลือกสีธีม"></div>
+          <p class="hint">เลือกสีประจำแอปได้ตามสไตล์ บันทึกแยกตามบัญชีผู้ใช้ และยังใช้คู่กับ Dark Mode ได้</p>
+        </section>
+
+
+        <section class="panel category-manager-panel">
+          <div class="panel-head"><h2>จัดการหมวดรายรับ-รายจ่าย</h2><span id="categoryCount" class="pill">0 หมวด</span></div>
+          <form id="categoryForm" class="category-form">
+            <label>ประเภทหมวด
+              <select id="categoryType">
+                <option value="expense">รายจ่าย</option>
+                <option value="income">รายรับ</option>
+              </select>
+            </label>
+            <label>ชื่อหมวดใหม่<input id="categoryName" type="text" placeholder="เช่น ค่าแมว / ลูกค้า A / ค่าโรงงาน" /></label>
+            <label>ไอคอน / Emoji<input id="categoryIcon" type="text" maxlength="4" placeholder="เช่น 🐱" /></label>
+            <button class="primary-btn" type="submit">เพิ่มหมวด</button>
+          </form>
+          <div class="category-tabs" role="tablist" aria-label="ดูหมวด">
+            <button id="showExpenseCats" class="cat-tab active" type="button">รายจ่าย</button>
+            <button id="showIncomeCats" class="cat-tab" type="button">รายรับ</button>
+          </div>
+          <div id="customCategoryList" class="custom-category-list"></div>
+          <p class="hint">หมวดมาตรฐานลบไม่ได้ แต่หมวดที่เพิ่มเองสามารถลบได้ ถ้ามีรายการเก่า ระบบยังแสดงชื่อหมวดนั้นในประวัติได้ตามปกติ</p>
+        </section>
+        <section class="panel">
+          <div class="panel-head"><h2>Sync / Backup</h2><span class="pill" id="lastBackup">ยังไม่ Backup</span></div>
+          <div class="settings-grid">
+            <label>โหมด Sync
+              <select id="syncMode">
+                <option value="local">Local only</option>
+                <option value="supabase">Supabase</option>
+                <option value="google-drive">Google Drive</option>
+              </select>
+            </label>
+            <label>Supabase URL<input id="supabaseUrl" type="url" placeholder="https://xxxx.supabase.co" /></label>
+            <label>Supabase Anon Key<input id="supabaseKey" type="password" placeholder="ใส่ anon key" /></label>
+            <label>Google Drive Folder ID<input id="driveFolder" type="text" placeholder="ใส่ Folder ID" /></label>
+          </div>
+          <div class="button-row">
+            <button id="backupJson" class="primary-btn" type="button">Backup เป็น JSON</button>
+            <label class="ghost-file">Restore JSON<input id="restoreJson" type="file" accept="application/json" /></label>
+          </div>
+          <p class="hint">ปุ่ม Sync ตอนนี้จำลองสถานะและเตรียมช่องตั้งค่าไว้ให้ Codex ต่อ API จริงกับ Supabase / Google Drive ได้</p>
+        </section>
+
+        <section class="panel">
+          <div class="panel-head"><h2>บัญชี</h2></div>
+          <p id="accountInfo" class="account-info"></p>
+          <button id="logoutBtn" class="danger-btn" type="button">ออกจากระบบ</button>
+        </section>
+      </section>
+    </main>
+
+    <nav class="bottom-nav" aria-label="เมนูหลัก">
+      <button class="nav-btn active" data-view="dashboard">🏠<span>หน้าแรก</span></button>
+      <button class="nav-btn" data-view="add">➕<span>เพิ่ม</span></button>
+      <button class="nav-btn" data-view="budget">🎯<span>งบ</span></button>
+      <button class="nav-btn" data-view="reports">📊<span>กราฟ</span></button>
+      <button class="nav-btn" data-view="settings">⚙️<span>ตั้งค่า</span></button>
+    </nav>
+  </div>
+
+  <template id="txTemplate">
+    <article class="tx-item">
+      <div class="tx-left">
+        <span class="tx-icon"></span>
+        <div>
+          <strong class="tx-note"></strong>
+          <p class="tx-meta"></p>
+          <button class="receipt-link hidden" type="button">ดูใบเสร็จ</button>
+        </div>
+      </div>
+      <div class="tx-right">
+        <strong class="tx-amount"></strong>
+        <div class="tx-actions">
+          <button class="edit-btn" type="button">แก้ไข</button>
+          <button class="delete-btn" type="button">ลบ</button>
+        </div>
+      </div>
+    </article>
+  </template>
+
+  <dialog id="receiptDialog">
+    <button id="closeReceipt" class="dialog-close" type="button">×</button>
+    <img id="receiptImage" alt="รูปใบเสร็จ" />
+  </dialog>
+
+  <script src="app.js"></script>
+</body>
+</html>
