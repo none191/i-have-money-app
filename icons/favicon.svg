@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="I Have Money">
+  <rect width="512" height="512" rx="112" fill="#faf7f1"/>
+  <rect x="70" y="86" width="372" height="340" rx="92" fill="#fffdf8" stroke="#eadfce" stroke-width="16"/>
+  <circle cx="256" cy="256" r="116" fill="#f4eadc"/>
+  <path d="M187 300c28 30 110 30 138 0" fill="none" stroke="#5f7f55" stroke-width="28" stroke-linecap="round"/>
+  <path d="M210 242c0-35 21-60 50-60 25 0 44 14 48 38h-32c-3-8-9-13-17-13-13 0-21 12-21 33s9 34 22 34c10 0 17-6 20-15h32c-5 27-25 42-52 42-31 0-50-24-50-59Z" fill="#5f7f55"/>
+  <circle cx="326" cy="190" r="28" fill="#7f9b72"/>
+</svg>

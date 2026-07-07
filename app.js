@@ -4,6 +4,14 @@ const THEME_KEY = `${STORAGE_PREFIX}_theme`;
 const ACCENT_KEY = `${STORAGE_PREFIX}_accent`;
 const SETTINGS_KEY = `${STORAGE_PREFIX}_settings`;
 const USERS_KEY = `${STORAGE_PREFIX}_users`;
+const GOOGLE_CONFIG_FILE = "google.config.js";
+const GOOGLE_IDENTITY_URL = "https://accounts.google.com/gsi/client";
+const GOOGLE_USERINFO_URL = "https://www.googleapis.com/oauth2/v3/userinfo";
+const GOOGLE_DRIVE_FILES_URL = "https://www.googleapis.com/drive/v3/files";
+const GOOGLE_DRIVE_UPLOAD_URL = "https://www.googleapis.com/upload/drive/v3/files";
+const GOOGLE_BACKUP_FILENAME = "i-have-money-backup.json";
+const GOOGLE_DRIVE_SCOPES_FALLBACK = "https://www.googleapis.com/auth/drive.appdata";
+const AUTO_LOCAL_BACKUP_KEY = `${STORAGE_PREFIX}_auto_local_backups`;
 
 const defaultIncomeCategories = ["เงินเดือน", "ขายของ", "โบนัส", "โอนเข้า", "คืนเงิน", "อื่น ๆ"];
 const defaultExpenseCategories = ["อาหาร", "เดินทาง", "ของใช้", "บ้าน", "ค่าส่ง", "ผ่อน/หนี้", "สุขภาพ", "ช้อปปิ้ง", "ธุรกิจ", "อื่น ๆ"];
@@ -17,8 +25,20 @@ const iconMap = {
 // (or a previous backup) never bleed into the currently signed-in user's session.
 const defaultIconMap = { ...iconMap };
 function resetIconMap() {
+  normalizeCategoryIcons();
   Object.keys(iconMap).forEach(key => delete iconMap[key]);
   Object.assign(iconMap, defaultIconMap, customCategoryIcons);
+}
+function normalizeCategoryIcons() {
+  if (!customCategoryIcons || typeof customCategoryIcons !== "object" || Array.isArray(customCategoryIcons)) {
+    customCategoryIcons = {};
+    return;
+  }
+  customCategoryIcons = Object.fromEntries(
+    Object.entries(customCategoryIcons)
+      .map(([cat, icon]) => [String(cat || "").trim(), String(icon || "").trim().slice(0, 8)])
+      .filter(([cat, icon]) => cat && icon && !["__proto__", "prototype", "constructor"].includes(cat))
+  );
 }
 
 const accentThemes = {
@@ -40,26 +60,36 @@ let categoryViewType = "expense";
 let currentMonth = new Date();
 let selectedDate = toDateInputValue(new Date());
 let receiptData = "";
-let settings = loadJson(SETTINGS_KEY, { syncMode: "local", supabaseUrl: "", supabaseKey: "", driveFolder: "", lastBackup: "" });
+let settings = normalizeSettings(loadJson(SETTINGS_KEY, {}));
+let googleConfig = null;
+let googleLoginTokenClient = null;
+let googleDriveTokenClient = null;
+let googleAccessToken = "";
+let googleDriveAccessToken = "";
+let googleProfile = null;
+let shouldCheckDriveConflict = false;
+let currentAuthProvider = "local";
 
 const els = {};
 
 document.addEventListener("DOMContentLoaded", init);
 
-function init() {
+async function init() {
   cacheElements();
   applyTheme(localStorage.getItem(THEME_KEY) || "light");
   applyAccent(localStorage.getItem(ACCENT_KEY) || "green");
   bindAuthEvents();
   bindAppEvents();
+  await initGoogleAuth();
   const session = loadJson(SESSION_KEY, null);
-  if (session?.email) loginSession(session.email);
+  if (session?.provider === "google" && session?.email) startGoogleUser(session.user || session);
+  else if (session?.email) loginSession(session.email);
   else showAuth("login");
   registerServiceWorker();
 }
 
 function cacheElements() {
-  ["authScreen","appShell","loginTab","signupTab","loginForm","signupForm","loginEmail","loginPassword","signupName","signupEmail","signupPassword","demoLogin","greeting","syncStatus","syncNow","themeToggle","monthBalance","monthIncome","monthExpense","todayNet","weekNet","monthCount","transactionForm","editId","date","amount","category","customCategory","categorySuggestions","categoryChips","note","receipt","receiptPreview","submitBtn","clearForm","calendarTitle","calendarGrid","selectedDateTitle","selectedDateTotal","transactionList","categoryReport","exportCsv","prevMonth","nextMonth","budgetForm","budgetCategory","budgetCustomCategory","expenseCategorySuggestions","budgetCategoryChips","budgetAmount","budgetList","budgetTotal","budgetMonthTitle","monthlyChart","syncMode","supabaseUrl","supabaseKey","driveFolder","backupJson","restoreJson","lastBackup","accountInfo","logoutBtn","appearanceMode","accentTheme","themePreviewText","themeSwatches","categoryForm","categoryType","categoryName","categoryIcon","categoryCount","showExpenseCats","showIncomeCats","customCategoryList","receiptDialog","receiptImage","closeReceipt"].forEach(id => els[id] = document.getElementById(id));
+  ["authScreen","appShell","loginTab","signupTab","loginForm","signupForm","loginEmail","loginPassword","signupName","signupEmail","signupPassword","googleLogin","googleLoginStatus","demoLogin","greeting","syncStatus","syncNow","themeToggle","monthBalance","monthIncome","monthExpense","todayNet","weekNet","monthCount","transactionForm","editId","date","amount","category","customCategory","categorySuggestions","categoryChips","note","receipt","receiptPreview","submitBtn","clearForm","calendarTitle","calendarGrid","selectedDateTitle","selectedDateTotal","transactionList","categoryReport","exportCsv","prevMonth","nextMonth","budgetForm","budgetCategory","budgetCustomCategory","expenseCategorySuggestions","budgetCategoryChips","budgetAmount","budgetList","budgetTotal","budgetMonthTitle","monthlyChart","syncMode","connectGoogleDrive","backupDrive","restoreDrive","backupJson","restoreJson","lastBackup","accountInfo","logoutBtn","appearanceMode","accentTheme","themePreviewText","themeSwatches","categoryForm","categoryType","categoryName","categoryIcon","categoryCount","showExpenseCats","showIncomeCats","customCategoryList","receiptDialog","receiptImage","closeReceipt"].forEach(id => els[id] = document.getElementById(id));
 }
 
 function bindAuthEvents() {
@@ -67,6 +97,7 @@ function bindAuthEvents() {
   els.signupTab.addEventListener("click", () => showAuth("signup"));
   els.signupForm.addEventListener("submit", onSignup);
   els.loginForm.addEventListener("submit", onLogin);
+  els.googleLogin.addEventListener("click", handleGoogleLogin);
   els.demoLogin.addEventListener("click", () => {
     ensureDemoUser();
     startUser("demo@ihavemoney.app");
@@ -88,6 +119,9 @@ function bindAppEvents() {
   els.backupJson.addEventListener("click", backupJson);
   els.restoreJson.addEventListener("change", restoreJson);
   els.syncNow.addEventListener("click", syncNow);
+  els.connectGoogleDrive?.addEventListener("click", requestGoogleDriveAccess);
+  els.backupDrive?.addEventListener("click", syncToGoogleDrive);
+  els.restoreDrive?.addEventListener("click", syncFromGoogleDrive);
   els.logoutBtn.addEventListener("click", logout);
   els.themeToggle.addEventListener("click", () => {
     const next = document.body.classList.contains("dark") ? "light" : "dark";
@@ -97,7 +131,7 @@ function bindAppEvents() {
   els.accentTheme.addEventListener("change", () => setAccent(els.accentTheme.value));
   els.receipt.addEventListener("change", onReceiptSelected);
   els.closeReceipt.addEventListener("click", () => els.receiptDialog.close());
-  [els.syncMode, els.supabaseUrl, els.supabaseKey, els.driveFolder].forEach(el => el.addEventListener("change", saveSettingsFromForm));
+  [els.syncMode].forEach(el => el?.addEventListener("change", saveSettingsFromForm));
 }
 
 function showAuth(mode) {
@@ -107,6 +141,170 @@ function showAuth(mode) {
   els.signupTab.classList.toggle("active", mode === "signup");
   els.loginForm.classList.toggle("hidden", mode !== "login");
   els.signupForm.classList.toggle("hidden", mode !== "signup");
+  updateThemeColor();
+}
+
+async function initGoogleAuth() {
+  updateGoogleLoginState("checking");
+  googleConfig = await loadGoogleConfig();
+  if (!isGoogleConfigReady(googleConfig)) {
+    updateGoogleLoginState("missing");
+    return;
+  }
+  try {
+    await loadScriptOnce(GOOGLE_IDENTITY_URL, "google-identity-services");
+    if (!window.google?.accounts?.oauth2) throw new Error("Google Identity Services is unavailable");
+    googleLoginTokenClient = window.google.accounts.oauth2.initTokenClient({
+      client_id: googleConfig.clientId,
+      scope: "openid email profile",
+      callback: handleGoogleTokenResponse
+    });
+    googleDriveTokenClient = window.google.accounts.oauth2.initTokenClient({
+      client_id: googleConfig.clientId,
+      scope: googleConfig.driveScopes,
+      callback: handleGoogleTokenResponse
+    });
+    updateGoogleLoginState("ready");
+  } catch (error) {
+    console.warn("Google Identity Services is not ready:", error);
+    googleLoginTokenClient = null;
+    googleDriveTokenClient = null;
+    updateGoogleLoginState("error");
+  }
+}
+
+async function loadGoogleConfig() {
+  if (window.IHM_GOOGLE_CONFIG) return normalizeGoogleConfig(window.IHM_GOOGLE_CONFIG);
+  try {
+    await loadScriptOnce(GOOGLE_CONFIG_FILE, "ihm-google-config");
+  } catch {
+    return null;
+  }
+  const clientId = typeof GOOGLE_CLIENT_ID !== "undefined" ? GOOGLE_CLIENT_ID : "";
+  const driveScopes = typeof GOOGLE_DRIVE_SCOPES !== "undefined" ? GOOGLE_DRIVE_SCOPES : "";
+  return normalizeGoogleConfig(window.IHM_GOOGLE_CONFIG || { clientId, driveScopes });
+}
+
+function normalizeGoogleConfig(config = {}) {
+  return {
+    clientId: String(config.clientId || config.GOOGLE_CLIENT_ID || "").trim(),
+    driveScopes: String(config.driveScopes || config.GOOGLE_DRIVE_SCOPES || GOOGLE_DRIVE_SCOPES_FALLBACK).trim() || GOOGLE_DRIVE_SCOPES_FALLBACK
+  };
+}
+
+function isGoogleConfigReady(config) {
+  return Boolean(config?.clientId);
+}
+
+function loadScriptOnce(src, id) {
+  return new Promise((resolve, reject) => {
+    const existing = document.getElementById(id);
+    if (existing?.dataset.loaded === "true") {
+      resolve();
+      return;
+    }
+    if (existing) {
+      existing.addEventListener("load", resolve, { once: true });
+      existing.addEventListener("error", reject, { once: true });
+      return;
+    }
+    const script = document.createElement("script");
+    script.id = id;
+    script.src = src;
+    script.async = true;
+    script.onload = () => {
+      script.dataset.loaded = "true";
+      resolve();
+    };
+    script.onerror = () => reject(new Error(`Cannot load ${src}`));
+    document.head.appendChild(script);
+  });
+}
+
+function updateGoogleLoginState(state) {
+  if (!els.googleLogin || !els.googleLoginStatus) return;
+  els.googleLoginStatus.classList.remove("ready", "error");
+  if (state === "ready") {
+    els.googleLogin.disabled = false;
+    els.googleLoginStatus.textContent = "Google Login พร้อมใช้งาน";
+    els.googleLoginStatus.classList.add("ready");
+  } else if (state === "checking") {
+    els.googleLogin.disabled = true;
+    els.googleLoginStatus.textContent = "กำลังตรวจสอบ Google Login...";
+  } else if (state === "error") {
+    els.googleLogin.disabled = true;
+    els.googleLoginStatus.textContent = "ตั้งค่า Google Login ไม่สำเร็จ ใช้ Email หรือ Demo ได้ตามปกติ";
+    els.googleLoginStatus.classList.add("error");
+  } else {
+    els.googleLogin.disabled = true;
+    els.googleLoginStatus.textContent = "ยังไม่ได้ตั้งค่า Google Client ID";
+  }
+}
+
+async function handleGoogleLogin() {
+  if (!googleLoginTokenClient) {
+    alert("ยังไม่ได้ตั้งค่า Google Client ID\nให้คัดลอก google.config.example.js เป็น google.config.js แล้วใส่ Google OAuth Client ID");
+    return;
+  }
+  googleLoginTokenClient.requestAccessToken({ prompt: "consent" });
+}
+
+async function handleGoogleTokenResponse(response) {
+  if (response?.error) {
+    setSyncStatus("failed");
+    alert(`Google authorization failed\n${response.error}`);
+    return;
+  }
+  const accessToken = response?.access_token || "";
+  const scope = response?.scope || "";
+  if (!accessToken) return;
+  if (scope.includes("drive.appdata")) {
+    googleDriveAccessToken = accessToken;
+    settings.googleDriveConnected = "true";
+    settings.lastSyncError = "";
+    localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+    renderSettings();
+    if (shouldCheckDriveConflict && currentAuthProvider === "google") {
+      shouldCheckDriveConflict = false;
+      try {
+        const existing = await findDriveBackupFile();
+        if (existing) {
+          await resolveDriveConflict(existing);
+          renderSettings();
+        }
+      } catch (error) {
+        console.warn("Google Drive conflict check failed:", error);
+        settings.lastSyncError = error.message || "Sync failed";
+        localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+        setSyncStatus("failed");
+      }
+    }
+    return;
+  }
+  googleAccessToken = accessToken;
+  try {
+    const profile = await fetchGoogleProfile(accessToken);
+    startGoogleUser(profile);
+    await promptGoogleDriveConflictIfNeeded();
+  } catch (error) {
+    console.warn("Google profile load failed:", error);
+    updateGoogleLoginState("error");
+    alert("เข้าสู่ระบบด้วย Google ไม่สำเร็จ");
+  }
+}
+
+async function fetchGoogleProfile(accessToken) {
+  const response = await fetch(GOOGLE_USERINFO_URL, {
+    headers: { Authorization: `Bearer ${accessToken}` }
+  });
+  if (!response.ok) throw new Error(`Google profile failed (${response.status})`);
+  const profile = await response.json();
+  return {
+    email: String(profile.email || "").toLowerCase(),
+    name: profile.name || profile.given_name || "ผู้ใช้ Google",
+    picture: profile.picture || "",
+    googleId: profile.sub || ""
+  };
 }
 
 async function onSignup(event) {
@@ -147,15 +345,46 @@ function ensureDemoUser() {
 }
 
 function startUser(email) {
-  localStorage.setItem(SESSION_KEY, JSON.stringify({ email }));
+  currentAuthProvider = "local";
+  localStorage.setItem(SESSION_KEY, JSON.stringify({ provider: "local", email }));
   loginSession(email);
 }
 
-function loginSession(email) {
+function startGoogleUser(user) {
+  const email = String(user.email || "").toLowerCase();
+  if (!email) {
+    alert("บัญชี Google นี้ไม่มีอีเมลที่ใช้ได้");
+    return;
+  }
+  const profile = {
+    email,
+    name: user.name || email.split("@")[0] || "ผู้ใช้ Google",
+    picture: user.picture || "",
+    googleId: user.googleId || user.sub || user.id || ""
+  };
+  googleProfile = profile;
+  currentAuthProvider = "google";
+  localStorage.setItem(SESSION_KEY, JSON.stringify({ provider: "google", email, user: profile }));
+  loginSession(email, { provider: "google", id: profile.googleId, name: profile.name, picture: profile.picture, googleId: profile.googleId });
+}
+
+function loginSession(email, options = {}) {
   const users = loadJson(USERS_KEY, []);
-  currentUser = users.find(user => user.email === email) || { name: "ผู้ใช้", email };
+  currentAuthProvider = options.provider || "local";
+  currentUser = users.find(user => user.email === email) || { name: options.name || "ผู้ใช้", email };
+  if (currentAuthProvider === "google") {
+    currentUser = {
+      ...currentUser,
+      name: options.name || currentUser.name || "ผู้ใช้ Google",
+      id: options.id,
+      googleId: options.googleId || options.id || "",
+      picture: options.picture || "",
+      provider: "google",
+      storageKey: options.googleId || options.id || email
+    };
+  }
   transactions = loadJson(userKey("transactions"), []);
-  budgets = loadJson(userKey("budgets"), {});
+  budgets = normalizeBudgets(loadJson(userKey("budgets"), {}));
   customCategories = loadJson(userKey("categories"), { income: [], expense: [] });
   customCategoryIcons = loadJson(userKey("categoryIcons"), {});
   resetIconMap();
@@ -177,11 +406,16 @@ function loginSession(email) {
 
 function logout() {
   localStorage.removeItem(SESSION_KEY);
+  currentAuthProvider = "local";
+  googleAccessToken = "";
+  googleDriveAccessToken = "";
+  googleProfile = null;
   currentUser = null;
   showAuth("login");
+  renderSettings();
 }
 
-function userKey(name) { return `${STORAGE_PREFIX}_${currentUser.email}_${name}`; }
+function userKey(name) { return `${STORAGE_PREFIX}_${currentUser.storageKey || currentUser.email}_${name}`; }
 
 function showView(viewName) {
   document.querySelectorAll(".view").forEach(view => view.classList.toggle("active", view.id === viewName));
@@ -199,7 +433,7 @@ function selectType(type) {
 async function onSaveTransaction(event) {
   event.preventDefault();
   const amount = Number(els.amount.value);
-  if (!amount || amount <= 0) return alert("กรุณาใส่จำนวนเงินให้ถูกต้อง");
+  if (!Number.isFinite(amount) || amount <= 0) return alert("กรุณาใส่จำนวนเงินให้ถูกต้อง");
   if (!els.date.value) return alert("กรุณาเลือกวันที่");
   const category = resolveCategory();
   if (!category) return;
@@ -240,19 +474,39 @@ function resetForm(resetDate) {
 }
 
 function getCategories(type) {
+  ensureCategoryBuckets();
   const defaults = type === "income" ? defaultIncomeCategories : defaultExpenseCategories;
   const custom = Array.isArray(customCategories[type]) ? customCategories[type] : [];
   const used = transactions.filter(t => t.type === type).map(t => t.category).filter(Boolean);
   return uniqueCategories([...defaults, ...custom, ...used]);
 }
 function uniqueCategories(list) {
-  return [...new Set(list.map(cat => String(cat || "").trim()).filter(Boolean))];
+  return [...new Set(list.map(cat => String(cat || "").trim()).filter(cat => cat && !isReservedKey(cat)))];
 }
 function normalizeCategories() {
+  ensureCategoryBuckets();
   customCategories = {
     income: uniqueCategories(customCategories?.income || []),
     expense: uniqueCategories(customCategories?.expense || [])
   };
+}
+function normalizeBudgets(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  return Object.entries(value).reduce((acc, [cat, amount]) => {
+    const key = String(cat || "").trim();
+    const numericAmount = Number(amount || 0);
+    if (key && !isReservedKey(key) && Number.isFinite(numericAmount) && numericAmount >= 0) {
+      acc[key] = numericAmount;
+    }
+    return acc;
+  }, {});
+}
+function ensureCategoryBuckets() {
+  if (!customCategories || typeof customCategories !== "object" || Array.isArray(customCategories)) {
+    customCategories = { income: [], expense: [] };
+  }
+  if (!Array.isArray(customCategories.income)) customCategories.income = [];
+  if (!Array.isArray(customCategories.expense)) customCategories.expense = [];
 }
 function saveCategories() {
   normalizeCategories();
@@ -273,7 +527,7 @@ function updateBudgetOptions() {
 }
 function renderCategoryChips(container, list, onPick) {
   if (!container) return;
-  container.innerHTML = list.slice(0, 14).map(cat => `<button type="button" class="chip-btn" data-cat="${escapeHtml(cat)}">${customCategoryIcons[cat] || iconMap[cat] || "📝"} ${escapeHtml(cat)}</button>`).join("");
+  container.innerHTML = list.slice(0, 14).map(cat => `<button type="button" class="chip-btn btn btn-subtle btn-sm" data-cat="${escapeHtml(cat)}">${categoryLabelHtml(cat)}</button>`).join("");
   container.querySelectorAll("button[data-cat]").forEach(btn => btn.addEventListener("click", () => onPick(btn.dataset.cat)));
 }
 
@@ -293,14 +547,25 @@ function onReceiptSelected(event) {
     receiptData = data;
     els.receiptPreview.innerHTML = `<img src="${data}" alt="ตัวอย่างใบเสร็จ" />`;
     els.receiptPreview.classList.remove("hidden");
-  }).catch(() => alert("ไม่สามารถอ่านรูปใบเสร็จได้"));
+  }).catch(() => {
+    event.target.value = "";
+    alert("ไม่สามารถอ่านรูปใบเสร็จได้");
+  });
+  reader.onerror = () => {
+    event.target.value = "";
+    alert("ไม่สามารถอ่านไฟล์ใบเสร็จได้");
+  };
   reader.readAsDataURL(file);
 }
 
 function compressImage(dataUrl, maxWidth, quality) {
-  return new Promise(resolve => {
+  return new Promise((resolve, reject) => {
     const img = new Image();
     img.onload = () => {
+      if (!img.width || !img.height) {
+        reject(new Error("Invalid image"));
+        return;
+      }
       const scale = Math.min(1, maxWidth / img.width);
       const canvas = document.createElement("canvas");
       canvas.width = Math.round(img.width * scale);
@@ -308,6 +573,7 @@ function compressImage(dataUrl, maxWidth, quality) {
       canvas.getContext("2d").drawImage(img, 0, 0, canvas.width, canvas.height);
       resolve(canvas.toDataURL("image/jpeg", quality));
     };
+    img.onerror = () => reject(new Error("Image load failed"));
     img.src = dataUrl;
   });
 }
@@ -396,10 +662,11 @@ function renderCategoryReport() {
   const totals = groupSum(monthItems, "category");
   const entries = Object.entries(totals).sort((a, b) => b[1] - a[1]);
   const max = Math.max(...entries.map(([, value]) => value), 1);
-  els.categoryReport.innerHTML = entries.length ? entries.map(([cat, value]) => `<div class="cat-row"><span>${iconMap[cat] || "📝"} ${cat}</span><b>${money(value)}</b><div class="cat-bar-wrap"><div class="cat-bar" style="width:${Math.round((value / max) * 100)}%"></div></div></div>`).join("") : `<p class="hint">ยังไม่มีรายจ่ายในเดือนนี้</p>`;
+  els.categoryReport.innerHTML = entries.length ? entries.map(([cat, value]) => `<div class="cat-row"><span>${categoryLabelHtml(cat)}</span><b>${money(value)}</b><div class="cat-bar-wrap"><div class="cat-bar" style="width:${Math.round((value / max) * 100)}%"></div></div></div>`).join("") : `<p class="hint">ยังไม่มีรายจ่ายในเดือนนี้</p>`;
 }
 
 function renderBudgets() {
+  budgets = normalizeBudgets(budgets);
   const monthItems = filterByMonth(transactions, currentMonth).filter(t => t.type === "expense");
   const spent = groupSum(monthItems, "category");
   const cats = [...new Set([...getCategories("expense"), ...Object.keys(budgets)])];
@@ -412,7 +679,7 @@ function renderBudgets() {
     const pct = budget ? Math.round((use / budget) * 100) : 0;
     const width = Math.min(pct || (use ? 100 : 0), 100);
     const state = pct >= 100 ? "over" : pct >= 80 ? "warn" : "";
-    return `<div class="cat-row"><span>${iconMap[cat] || "📝"} ${cat}<br><small class="hint">ใช้ ${money(use)} / งบ ${budget ? money(budget) : "ยังไม่ตั้ง"}</small></span><b>${budget ? pct + "%" : "-"}</b><div class="cat-bar-wrap"><div class="cat-bar ${state}" style="width:${width}%"></div></div></div>`;
+    return `<div class="cat-row"><span>${categoryLabelHtml(cat)}<br><small class="hint">ใช้ ${money(use)} / งบ ${budget ? money(budget) : "ยังไม่ตั้ง"}</small></span><b>${budget ? pct + "%" : "-"}</b><div class="cat-bar-wrap"><div class="cat-bar ${state}" style="width:${width}%"></div></div></div>`;
   }).join("") : `<p class="hint">ยังไม่ได้ตั้งงบประมาณ เริ่มจากเลือกหมวดและใส่วงเงินต่อเดือน</p>`;
 }
 
@@ -420,7 +687,9 @@ function onSaveBudget(event) {
   event.preventDefault();
   const cat = resolveBudgetCategory();
   if (!cat) return alert("กรุณาเลือกหรือพิมพ์หมวดงบประมาณ");
-  budgets[cat] = Number(els.budgetAmount.value || 0);
+  const amount = Number(els.budgetAmount.value || 0);
+  if (!Number.isFinite(amount) || amount < 0) return alert("กรุณาใส่งบประมาณให้ถูกต้อง");
+  budgets[cat] = amount;
   localStorage.setItem(userKey("budgets"), JSON.stringify(budgets));
   saveCategories();
   els.budgetAmount.value = "";
@@ -514,8 +783,10 @@ function deleteItem(id) {
 }
 function openReceipt(src) { els.receiptImage.src = src; els.receiptDialog.showModal(); }
 function moveMonth(delta) { currentMonth = new Date(currentMonth.getFullYear(), currentMonth.getMonth() + delta, 1); render(); }
-function saveTransactions() { localStorage.setItem(userKey("transactions"), JSON.stringify(transactions)); }
-function groupSum(items, field) { return items.reduce((acc, item) => { acc[item[field]] = (acc[item[field]] || 0) + Number(item.amount); return acc; }, {}); }
+function saveTransactions() {
+  localStorage.setItem(userKey("transactions"), JSON.stringify(transactions));
+}
+function groupSum(items, field) { return items.reduce((acc, item) => { const key = String(item[field] || "").trim(); if (!key || isReservedKey(key)) return acc; acc[key] = (acc[key] || 0) + Number(item.amount); return acc; }, Object.create(null)); }
 function sum(items) { return items.reduce((total, item) => total + Number(item.amount), 0); }
 function net(items) { return sum(items.filter(t => t.type === "income")) - sum(items.filter(t => t.type === "expense")); }
 function money(value) { return new Intl.NumberFormat("th-TH", { style: "currency", currency: "THB", maximumFractionDigits: 0 }).format(value); }
@@ -525,19 +796,28 @@ function filterByMonth(items, date) { const year = date.getFullYear(); const mon
 function filterCurrentWeek(items) { const today = new Date(); const day = (today.getDay() + 6) % 7; const monday = new Date(today); monday.setDate(today.getDate() - day); monday.setHours(0, 0, 0, 0); const sunday = new Date(monday); sunday.setDate(monday.getDate() + 6); sunday.setHours(23, 59, 59, 999); return items.filter(item => { const d = new Date(item.date + "T12:00:00"); return d >= monday && d <= sunday; }); }
 function formatThaiDate(dateStr) { return new Intl.DateTimeFormat("th-TH", { weekday: "long", day: "numeric", month: "long", year: "numeric" }).format(new Date(dateStr + "T12:00:00")); }
 function loadJson(key, fallback) { try { return JSON.parse(localStorage.getItem(key)) ?? fallback; } catch { return fallback; } }
+function updateThemeColor() {
+  const authVisible = els.authScreen && !els.authScreen.classList.contains("hidden");
+  const color = authVisible ? "#faf7f1" : (getCss("--brand") || "#1f8a5b");
+  document.querySelector('meta[name="theme-color"]')?.setAttribute("content", color);
+}
 function applyTheme(theme) {
   document.body.classList.toggle("dark", theme === "dark");
-  if (els.themeToggle) els.themeToggle.textContent = theme === "dark" ? "☀️" : "🌙";
+  if (els.themeToggle) {
+    const label = theme === "dark" ? "เปลี่ยนเป็นโหมดสว่าง" : "เปลี่ยนเป็นโหมดมืด";
+    els.themeToggle.setAttribute("aria-label", label);
+    els.themeToggle.title = label;
+  }
   if (els.appearanceMode) els.appearanceMode.value = theme === "dark" ? "dark" : "light";
-  document.querySelector('meta[name="theme-color"]')?.setAttribute("content", getCss("--brand") || "#1f8a5b");
+  updateThemeColor();
 }
 function applyAccent(accent) {
   const safeAccent = accentThemes[accent] ? accent : "green";
   document.body.dataset.accent = safeAccent;
   if (els.accentTheme) els.accentTheme.value = safeAccent;
   if (els.themePreviewText) els.themePreviewText.textContent = accentThemes[safeAccent].name;
-  document.querySelector('meta[name="theme-color"]')?.setAttribute("content", getCss("--brand") || accentThemes[safeAccent].colors[0]);
   document.querySelectorAll(".swatch-btn").forEach(btn => btn.classList.toggle("active", btn.dataset.accent === safeAccent));
+  updateThemeColor();
 }
 function setAppearance(theme) {
   applyTheme(theme);
@@ -569,7 +849,7 @@ function saveUserPreferences() {
 function renderThemeOptions() {
   if (!els.themeSwatches) return;
   els.themeSwatches.innerHTML = Object.entries(accentThemes).map(([key, theme]) => `
-    <button type="button" class="swatch-btn" data-accent="${key}" style="--swatch-1:${theme.colors[0]};--swatch-2:${theme.colors[1]}">
+    <button type="button" class="swatch-btn btn btn-subtle" data-accent="${key}" style="--swatch-1:${theme.colors[0]};--swatch-2:${theme.colors[1]}">
       <span class="swatch-dot"></span><span class="swatch-name">${theme.name}</span>
     </button>`).join("");
   els.themeSwatches.querySelectorAll(".swatch-btn").forEach(btn => btn.addEventListener("click", () => setAccent(btn.dataset.accent)));
@@ -580,6 +860,7 @@ function resolveCategory() {
   const selected = els.category.value.trim();
   const category = typed || selected;
   if (!category) { alert("กรุณาเลือกหรือพิมพ์หมวด"); return ""; }
+  if (isReservedKey(category)) { alert("ชื่อนี้ใช้เป็นหมวดไม่ได้"); return ""; }
   if (typed) addCustomCategory(selectedType, typed, "📝", true);
   return category;
 }
@@ -587,12 +868,15 @@ function resolveBudgetCategory() {
   const typed = els.budgetCustomCategory.value.trim();
   const selected = els.budgetCategory.value.trim();
   const category = typed || selected;
+  if (isReservedKey(category)) { alert("ชื่อนี้ใช้เป็นหมวดไม่ได้"); return ""; }
   if (typed) addCustomCategory("expense", typed, "🎯", true);
   return category;
 }
 function addCustomCategory(type, name, icon = "📝", shouldRender = true, overwriteIcon = false) {
+  ensureCategoryBuckets();
+  normalizeCategoryIcons();
   const category = String(name || "").trim();
-  if (!category) return false;
+  if (!category || isReservedKey(category)) return false;
   const defaults = type === "income" ? defaultIncomeCategories : defaultExpenseCategories;
   const isNewCategory = !defaults.includes(category) && !customCategories[type].includes(category);
   if (isNewCategory) {
@@ -692,8 +976,8 @@ function renderCategoryManager() {
     const isDefault = defaults.includes(cat);
     const isCustom = custom.includes(cat);
     const badge = isDefault ? "มาตรฐาน" : isCustom ? "เพิ่มเอง" : "จากรายการเก่า";
-    const actions = isCustom ? `<div class="cat-item-actions"><button type="button" class="edit-cat-btn" data-type="${type}" data-cat="${escapeHtml(cat)}">แก้ไข</button><button type="button" class="del-cat-btn" data-type="${type}" data-cat="${escapeHtml(cat)}">ลบ</button></div>` : "";
-    return `<div class="custom-cat-item"><span><b>${customCategoryIcons[cat] || iconMap[cat] || "📝"} ${escapeHtml(cat)}</b><small>${badge}</small></span>${actions}</div>`;
+    const actions = isCustom ? `<div class="cat-item-actions"><button type="button" class="edit-cat-btn btn btn-subtle btn-compact" data-type="${type}" data-cat="${escapeHtml(cat)}">แก้ไข</button><button type="button" class="del-cat-btn btn btn-danger btn-compact" data-type="${type}" data-cat="${escapeHtml(cat)}">ลบ</button></div>` : "";
+    return `<div class="custom-cat-item"><span><b>${categoryLabelHtml(cat)}</b><small>${badge}</small></span>${actions}</div>`;
   }).join("");
   els.customCategoryList.querySelectorAll("button.del-cat-btn").forEach(btn => btn.addEventListener("click", () => deleteCustomCategory(btn.dataset.type, btn.dataset.cat)));
   els.customCategoryList.querySelectorAll("button.edit-cat-btn").forEach(btn => btn.addEventListener("click", () => editCustomCategory(btn.dataset.type, btn.dataset.cat)));
@@ -701,19 +985,28 @@ function renderCategoryManager() {
 function escapeHtml(value) {
   return String(value).replace(/[&<>"]/g, char => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[char]));
 }
+function isReservedKey(value) {
+  return ["__proto__", "prototype", "constructor"].includes(String(value || "").trim());
+}
+function categoryIcon(cat) {
+  return customCategoryIcons?.[cat] || iconMap[cat] || "📝";
+}
+function categoryLabelHtml(cat) {
+  return `${escapeHtml(categoryIcon(cat))} ${escapeHtml(cat)}`;
+}
 function exportCsv() {
   const header = ["date", "type", "category", "amount", "note", "hasReceipt"];
   const rows = transactions.map(t => [t.date, t.type, t.category, t.amount, t.note, Boolean(t.receipt)]);
-  const csv = [header, ...rows].map(row => row.map(cell => `"${String(cell).replaceAll('"', '""')}"`).join(",")).join("\n");
+  const csv = [header, ...rows].map(row => row.map(csvCell).join(",")).join("\n");
   downloadFile("i-have-money-export.csv", "\ufeff" + csv, "text/csv;charset=utf-8");
 }
+function csvCell(cell) {
+  const text = String(cell ?? "");
+  const safeText = /^[=+\-@]/.test(text) ? `'${text}` : text;
+  return `"${safeText.replaceAll('"', '""')}"`;
+}
 function backupJson() {
-  // Export the account's public profile info only; never write passwordHash into a file
-  // the user may share, upload, or store outside the device.
-  const safeUser = currentUser ? { name: currentUser.name, email: currentUser.email, createdAt: currentUser.createdAt } : null;
-  const payload = { app: "I Have Money", version: 4, user: safeUser, transactions, budgets, categories: customCategories, categoryIcons: customCategoryIcons, settings, preferences: loadJson(userKey("preferences"), {}), exportedAt: new Date().toISOString() };
-  settings.lastBackup = new Date().toISOString();
-  localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+  const payload = buildBackupPayload();
   downloadFile(`i-have-money-backup-${toDateInputValue(new Date())}.json`, JSON.stringify(payload, null, 2), "application/json");
   renderSettings();
 }
@@ -724,33 +1017,98 @@ function restoreJson(event) {
   reader.onload = () => {
     try {
       const data = JSON.parse(reader.result);
-      transactions = Array.isArray(data.transactions) ? data.transactions : [];
-      budgets = data.budgets || {};
-      saveTransactions();
-      localStorage.setItem(userKey("budgets"), JSON.stringify(budgets));
-      customCategories = data.categories || { income: [], expense: [] };
-      customCategoryIcons = data.categoryIcons || {};
-      resetIconMap();
-      saveCategories();
-      if (data.preferences) { localStorage.setItem(userKey("preferences"), JSON.stringify(data.preferences)); loadUserPreferences(); }
-      if (data.settings) {
-        settings = { syncMode: data.settings.syncMode || "local", supabaseUrl: data.settings.supabaseUrl || "", supabaseKey: data.settings.supabaseKey || "", driveFolder: data.settings.driveFolder || "", lastBackup: data.settings.lastBackup || settings.lastBackup || "" };
-        localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
-        loadSettingsToForm();
-      }
-      renderThemeOptions();
-      updateCategoryOptions();
-      updateBudgetOptions();
-      renderCategoryManager();
-      render();
+      restoreFromBackupPayload(data);
       event.target.value = "";
-      alert("Restore ข้อมูลเรียบร้อย");
+      alert("นำข้อมูลกลับเรียบร้อย");
     } catch {
       event.target.value = "";
-      alert("ไฟล์ Backup ไม่ถูกต้อง");
+      alert("ไฟล์สำรองข้อมูลไม่ถูกต้อง");
     }
   };
   reader.readAsText(file);
+}
+function buildBackupPayload() {
+  const updatedAt = new Date().toISOString();
+  const safeSettings = normalizeSettings({ ...settings, lastBackup: updatedAt });
+  settings = safeSettings;
+  localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+  const user = currentUser ? {
+    email: currentUser.email || "",
+    name: currentUser.name || "",
+    googleId: currentUser.googleId || googleProfile?.googleId || ""
+  } : { email: "", name: "", googleId: "" };
+  const payload = {
+    app: "I Have Money",
+    version: 1,
+    updatedAt,
+    user,
+    transactions: Array.isArray(transactions) ? transactions : [],
+    budgets: normalizeBudgets(budgets),
+    categories: normalizeBackupCategories(customCategories),
+    categoryIcons: normalizeBackupCategoryIcons(customCategoryIcons),
+    settings: safeSettings,
+    preferences: currentUser ? loadJson(userKey("preferences"), {}) : {}
+  };
+  warnIfBackupIsLarge(payload);
+  return payload;
+}
+function restoreFromBackupPayload(payload) {
+  if (!payload || typeof payload !== "object") throw new Error("Invalid backup payload");
+  createAutomaticLocalBackup();
+  transactions = Array.isArray(payload.transactions) ? payload.transactions.filter(item => item && typeof item === "object") : [];
+  budgets = normalizeBudgets(payload.budgets);
+  saveTransactions();
+  localStorage.setItem(userKey("budgets"), JSON.stringify(budgets));
+  customCategories = normalizeBackupCategories(payload.categories);
+  customCategoryIcons = normalizeBackupCategoryIcons(payload.categoryIcons);
+  resetIconMap();
+  saveCategories();
+  if (payload.preferences) {
+    localStorage.setItem(userKey("preferences"), JSON.stringify(payload.preferences));
+    loadUserPreferences();
+  }
+  if (payload.settings) {
+    settings = normalizeSettings({ ...payload.settings, lastBackup: payload.updatedAt || payload.exportedAt || payload.settings.lastBackup || settings.lastBackup || "" });
+    localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+    loadSettingsToForm();
+  }
+  renderThemeOptions();
+  updateCategoryOptions();
+  updateBudgetOptions();
+  renderCategoryManager();
+  render();
+}
+function normalizeBackupCategories(value) {
+  const source = value && typeof value === "object" && !Array.isArray(value) ? value : {};
+  return {
+    income: Array.isArray(source.income) ? source.income.map(item => String(item || "").trim()).filter(item => item && !isReservedKey(item)) : [],
+    expense: Array.isArray(source.expense) ? source.expense.map(item => String(item || "").trim()).filter(item => item && !isReservedKey(item)) : []
+  };
+}
+function normalizeBackupCategoryIcons(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  return Object.fromEntries(
+    Object.entries(value)
+      .map(([cat, icon]) => [String(cat || "").trim(), String(icon || "").trim().slice(0, 8)])
+      .filter(([cat, icon]) => cat && icon && !isReservedKey(cat))
+  );
+}
+function createAutomaticLocalBackup() {
+  if (!currentUser) return;
+  const backups = loadJson(AUTO_LOCAL_BACKUP_KEY, []);
+  const snapshot = {
+    createdAt: new Date().toISOString(),
+    userKey: currentUser.storageKey || currentUser.email,
+    payload: buildBackupPayload()
+  };
+  backups.unshift(snapshot);
+  localStorage.setItem(AUTO_LOCAL_BACKUP_KEY, JSON.stringify(backups.slice(0, 5)));
+}
+function warnIfBackupIsLarge(payload) {
+  const sizeMb = new Blob([JSON.stringify(payload)]).size / (1024 * 1024);
+  if (sizeMb > 8) {
+    alert("ไฟล์สำรองข้อมูลมีขนาดใหญ่ เพราะรูปใบเสร็จยังเก็บเป็น base64\nTODO: แยกรูปใบเสร็จเป็นไฟล์ใน Google Drive แล้วเก็บ fileId ใน JSON");
+  }
 }
 function downloadFile(filename, content, type) {
   const blob = new Blob([content], { type });
@@ -758,28 +1116,233 @@ function downloadFile(filename, content, type) {
   const a = document.createElement("a");
   a.href = url; a.download = filename; a.click(); URL.revokeObjectURL(url);
 }
+async function requestGoogleDriveAccess() {
+  if (!googleDriveTokenClient) {
+    alert("ยังไม่ได้ตั้งค่า Google Client ID\nให้คัดลอก google.config.example.js เป็น google.config.js แล้วใส่ Google OAuth Client ID");
+    return false;
+  }
+  googleDriveTokenClient.requestAccessToken({ prompt: googleDriveAccessToken ? "" : "consent" });
+  return true;
+}
+async function ensureGoogleDriveAccess() {
+  if (googleDriveAccessToken) return true;
+  await requestGoogleDriveAccess();
+  return false;
+}
+async function driveFetch(url, options = {}) {
+  if (!googleDriveAccessToken) throw new Error("Google Drive is not connected");
+  const response = await fetch(url, {
+    ...options,
+    headers: {
+      ...(options.headers || {}),
+      Authorization: `Bearer ${googleDriveAccessToken}`
+    }
+  });
+  if (!response.ok) {
+    const text = await response.text().catch(() => "");
+    throw new Error(text || `Google Drive request failed (${response.status})`);
+  }
+  return response;
+}
+async function findDriveBackupFile() {
+  const query = encodeURIComponent(`name='${GOOGLE_BACKUP_FILENAME}' and trashed=false`);
+  const fields = encodeURIComponent("files(id,name,modifiedTime)");
+  const response = await driveFetch(`${GOOGLE_DRIVE_FILES_URL}?spaces=appDataFolder&q=${query}&fields=${fields}`);
+  const data = await response.json();
+  return data.files?.[0] || null;
+}
+async function createDriveBackupFile(payload) {
+  const boundary = `ihm_${Date.now()}`;
+  const metadata = { name: GOOGLE_BACKUP_FILENAME, parents: ["appDataFolder"], mimeType: "application/json" };
+  const body = [
+    `--${boundary}`,
+    "Content-Type: application/json; charset=UTF-8",
+    "",
+    JSON.stringify(metadata),
+    `--${boundary}`,
+    "Content-Type: application/json; charset=UTF-8",
+    "",
+    JSON.stringify(payload, null, 2),
+    `--${boundary}--`
+  ].join("\r\n");
+  const response = await driveFetch(`${GOOGLE_DRIVE_UPLOAD_URL}?uploadType=multipart&fields=id,name,modifiedTime`, {
+    method: "POST",
+    headers: { "Content-Type": `multipart/related; boundary=${boundary}` },
+    body
+  });
+  return response.json();
+}
+async function updateDriveBackupFile(fileId, payload) {
+  const response = await driveFetch(`${GOOGLE_DRIVE_UPLOAD_URL}/${encodeURIComponent(fileId)}?uploadType=media&fields=id,name,modifiedTime`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json; charset=UTF-8" },
+    body: JSON.stringify(payload, null, 2)
+  });
+  return response.json();
+}
+async function downloadDriveBackupFile(fileId) {
+  const response = await driveFetch(`${GOOGLE_DRIVE_FILES_URL}/${encodeURIComponent(fileId)}?alt=media`);
+  return response.json();
+}
+async function syncToGoogleDrive() {
+  if (!googleDriveAccessToken) {
+    await requestGoogleDriveAccess();
+    alert("เชื่อมต่อ Google Drive แล้วกดสำรองข้อมูลไป Google Drive อีกครั้ง");
+    return;
+  }
+  try {
+    setSyncStatus("syncing");
+    const payload = buildBackupPayload();
+    const existing = await findDriveBackupFile();
+    const result = existing ? await updateDriveBackupFile(existing.id, payload) : await createDriveBackupFile(payload);
+    settings.syncMode = "google-drive";
+    settings.googleDriveConnected = "true";
+    settings.lastBackup = payload.updatedAt;
+    settings.lastSync = result.modifiedTime || payload.updatedAt;
+    settings.lastSyncError = "";
+    localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+    renderSettings();
+    alert("สำรองข้อมูลไป Google Drive เรียบร้อย");
+  } catch (error) {
+    console.warn("Google Drive backup failed:", error);
+    settings.lastSyncError = error.message || "Sync failed";
+    localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+    setSyncStatus("failed");
+    alert("สำรองข้อมูลไป Google Drive ไม่สำเร็จ");
+  }
+}
+async function syncFromGoogleDrive() {
+  if (!googleDriveAccessToken) {
+    await requestGoogleDriveAccess();
+    alert("เชื่อมต่อ Google Drive แล้วกดดึงข้อมูลจาก Google Drive อีกครั้ง");
+    return;
+  }
+  try {
+    setSyncStatus("syncing");
+    const existing = await findDriveBackupFile();
+    if (!existing) {
+      renderSettings();
+      alert("ยังไม่พบไฟล์สำรองใน Google Drive");
+      return;
+    }
+    const payload = await downloadDriveBackupFile(existing.id);
+    if (!confirm("พบข้อมูลบน Google Drive ต้องการนำข้อมูลบน Drive มาใช้กับเครื่องนี้หรือไม่?\nระบบจะสร้าง local backup อัตโนมัติก่อนนำข้อมูลกลับ")) {
+      renderSettings();
+      return;
+    }
+    restoreFromBackupPayload(payload);
+    settings.syncMode = "google-drive";
+    settings.googleDriveConnected = "true";
+    settings.lastSync = new Date().toISOString();
+    settings.lastSyncError = "";
+    localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+    renderSettings();
+    alert("ดึงข้อมูลจาก Google Drive เรียบร้อย");
+  } catch (error) {
+    console.warn("Google Drive restore failed:", error);
+    settings.lastSyncError = error.message || "Sync failed";
+    localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+    setSyncStatus("failed");
+    alert("ดึงข้อมูลจาก Google Drive ไม่สำเร็จ");
+  }
+}
+async function promptGoogleDriveConflictIfNeeded() {
+  if (!googleConfig || !currentUser) return;
+  shouldCheckDriveConflict = true;
+  await requestGoogleDriveAccess();
+  setSyncStatus("google");
+}
+async function resolveDriveConflict(file) {
+  const choice = prompt("พบไฟล์สำรองบน Google Drive\nพิมพ์ 1 ใช้ข้อมูลบนเครื่อง\nพิมพ์ 2 ใช้ข้อมูลจาก Google Drive\nพิมพ์ 3 รวมข้อมูลแบบ merge", "1");
+  if (choice === "2") {
+    const payload = await downloadDriveBackupFile(file.id);
+    restoreFromBackupPayload(payload);
+    return "drive";
+  }
+  if (choice === "3") {
+    const payload = await downloadDriveBackupFile(file.id);
+    restoreFromBackupPayload(mergeBackupPayloads(buildBackupPayload(), payload));
+    await syncToGoogleDrive();
+    return "merge";
+  }
+  return "local";
+}
+function mergeBackupPayloads(localPayload, drivePayload) {
+  const byId = new Map();
+  [...(drivePayload.transactions || []), ...(localPayload.transactions || [])].forEach(item => {
+    if (item?.id) byId.set(item.id, item);
+  });
+  const categories = {
+    income: [...new Set([...(drivePayload.categories?.income || []), ...(localPayload.categories?.income || [])])],
+    expense: [...new Set([...(drivePayload.categories?.expense || []), ...(localPayload.categories?.expense || [])])]
+  };
+  return {
+    ...drivePayload,
+    ...localPayload,
+    updatedAt: new Date().toISOString(),
+    transactions: [...byId.values()],
+    budgets: normalizeBudgets({ ...(drivePayload.budgets || {}), ...(localPayload.budgets || {}) }),
+    categories,
+    categoryIcons: normalizeBackupCategoryIcons({ ...(drivePayload.categoryIcons || {}), ...(localPayload.categoryIcons || {}) }),
+    settings: normalizeSettings({ ...(drivePayload.settings || {}), ...(localPayload.settings || {}), syncMode: "google-drive" })
+  };
+}
+function setSyncStatus(state) {
+  if (state === "syncing") {
+    if (els.syncStatus) els.syncStatus.textContent = "Syncing...";
+    return;
+  }
+  if (state === "failed") {
+    if (els.syncStatus) els.syncStatus.textContent = "Sync failed";
+    return;
+  }
+  renderSettings();
+}
+function normalizeSettings(value = {}) {
+  const allowedModes = new Set(["local", "google-drive"]);
+  const syncMode = allowedModes.has(value.syncMode) ? value.syncMode : "local";
+  return {
+    syncMode,
+    googleDriveConnected: String(value.googleDriveConnected || ""),
+    lastBackup: String(value.lastBackup || ""),
+    lastSync: String(value.lastSync || ""),
+    lastSyncError: String(value.lastSyncError || "")
+  };
+}
+function syncModeLabel(mode) {
+  if (mode === "google-drive") return "Google Drive";
+  return "Local only";
+}
 function loadSettingsToForm() {
+  settings = normalizeSettings(settings);
   els.syncMode.value = settings.syncMode || "local";
-  els.supabaseUrl.value = settings.supabaseUrl || "";
-  els.supabaseKey.value = settings.supabaseKey || "";
-  els.driveFolder.value = settings.driveFolder || "";
 }
 function saveSettingsFromForm() {
-  settings = { syncMode: els.syncMode.value, supabaseUrl: els.supabaseUrl.value, supabaseKey: els.supabaseKey.value, driveFolder: els.driveFolder.value, lastBackup: settings.lastBackup || "" };
+  settings = normalizeSettings({ ...settings, syncMode: els.syncMode.value, lastBackup: settings.lastBackup || "" });
   localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
   renderSettings();
 }
-function syncNow() {
+async function syncNow() {
   saveSettingsFromForm();
-  const modeName = settings.syncMode === "local" ? "Local only" : settings.syncMode === "supabase" ? "Supabase พร้อมต่อ API" : "Google Drive พร้อมต่อ API";
-  els.syncStatus.textContent = `Sync: ${modeName} • ${new Date().toLocaleTimeString("th-TH", { hour: "2-digit", minute: "2-digit" })}`;
-  alert(`${modeName}\nเวอร์ชันนี้เตรียมโครงหน้าและ config แล้ว ขั้นถัดไปให้ Codex ต่อ API จริง`);
+  if (settings.syncMode === "google-drive" || googleDriveAccessToken) {
+    await syncToGoogleDrive();
+    return;
+  }
+  els.syncStatus.textContent = "Local only";
+  alert("Local only\nข้อมูลยังเก็บในเครื่องและสามารถสำรองเป็นไฟล์ JSON ได้");
 }
 function renderSettings() {
-  const modeName = settings.syncMode === "local" ? "Local only" : settings.syncMode;
-  els.syncStatus.textContent = `Sync: ${modeName}`;
-  els.lastBackup.textContent = settings.lastBackup ? new Intl.DateTimeFormat("th-TH", { dateStyle: "medium", timeStyle: "short" }).format(new Date(settings.lastBackup)) : "ยังไม่ Backup";
-  els.accountInfo.textContent = `${currentUser?.name || "ผู้ใช้"} • ${currentUser?.email || ""}`;
+  settings = normalizeSettings(settings);
+  const modeName = getSyncStatusLabel();
+  els.syncStatus.textContent = modeName;
+  els.lastBackup.textContent = settings.lastBackup ? `Last backup: ${new Intl.DateTimeFormat("th-TH", { dateStyle: "medium", timeStyle: "short" }).format(new Date(settings.lastBackup))}` : "Last backup: ยังไม่มี";
+  els.accountInfo.textContent = `${currentUser?.name || "ผู้ใช้"} • ${currentUser?.email || ""}${currentAuthProvider === "google" ? " • Google Account" : ""}`;
+}
+function getSyncStatusLabel() {
+  if (settings.lastSyncError) return "Sync failed";
+  if (googleDriveAccessToken) return "Google Drive connected";
+  if (currentAuthProvider === "google") return "Google connected";
+  return syncModeLabel(settings.syncMode);
 }
 function seedExampleDataIfEmpty() {
   if (transactions.length) return;

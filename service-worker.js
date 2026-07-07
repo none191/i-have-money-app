@@ -1,8 +1,34 @@
-const CACHE_NAME = "i-have-money-v4-reviewed-2";
-const ASSETS = ["./", "./index.html", "./styles.css", "./app.js", "./manifest.webmanifest", "./icon.svg", "./icons/icon-192.png", "./icons/icon-512.png", "./icons/icon-maskable-512.png", "./icons/apple-touch-icon.png"];
+const CACHE_NAME = "i-have-money-v5-settings-polish-3";
+const ASSETS = [
+  "./",
+  "./index.html",
+  "./styles.css?v=settings-polish-3",
+  "./app.js?v=icons-v5",
+  "./manifest.webmanifest?v=5",
+  "./icons/favicon.svg?v=5",
+  "./icons/icon-192.png?v=5",
+  "./icons/icon-512.png?v=5",
+  "./icons/icon-maskable-512.png?v=5",
+  "./icons/apple-touch-icon.png?v=5",
+  "./icons/login/login-brand-transparent.png",
+  "./icons/menu/menu-home.svg",
+  "./icons/menu/menu-add.svg",
+  "./icons/menu/menu-budget.svg",
+  "./icons/menu/menu-chart.svg",
+  "./icons/menu/menu-settings.svg",
+  "./icons/menu/menu-calendar.svg",
+  "./icons/menu/menu-income.svg",
+  "./icons/menu/menu-expense.svg",
+  "./icons/menu/menu-sync.svg",
+  "./icons/menu/menu-dark.svg",
+  "./icons/menu/menu-cat.svg",
+  "./icons/menu/menu-bird.svg"
+];
 
 self.addEventListener("install", event => {
-  event.waitUntil(caches.open(CACHE_NAME).then(cache => cache.addAll(ASSETS)));
+  event.waitUntil(
+    caches.open(CACHE_NAME).then(cache => cache.addAll(ASSETS.map(asset => new Request(asset, { cache: "reload" }))))
+  );
   self.skipWaiting();
 });
 

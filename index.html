@@ -3,21 +3,25 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-  <meta name="theme-color" content="#1f8a5b" />
-  <meta name="description" content="I Have Money v4 - แอปจดรายรับรายจ่าย ใช้ง่าย มีปฏิทิน งบประมาณ กราฟ Backup และหมวดกำหนดเอง" />
-  <link rel="manifest" href="manifest.webmanifest" />
-  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
+  <meta name="theme-color" content="#faf7f1" />
+  <meta name="description" content="I Have Money v4 - แอปจดรายรับรายจ่าย ใช้ง่าย มีปฏิทิน งบประมาณ กราฟ สำรองข้อมูล และหมวดกำหนดเอง" />
+  <link rel="manifest" href="manifest.webmanifest?v=5" />
+  <link rel="icon" href="icons/favicon.svg?v=5" type="image/svg+xml" />
+  <link rel="shortcut icon" href="icons/favicon.svg?v=5" type="image/svg+xml" />
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png?v=5" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="I Have Money" />
-  <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="styles.css?v=settings-polish-3" />
   <title>I Have Money v4</title>
 </head>
 <body>
   <div id="authScreen" class="auth-screen">
     <div class="brand-card">
-      <div class="brand-logo">💰</div>
+      <div class="brand-logo">
+        <img src="icons/login/login-brand-transparent.png" alt="I Have Money" class="brand-logo-img" />
+      </div>
       <p class="eyebrow">Personal money journal</p>
       <h1>I Have Money</h1>
       <p class="lead">จดรายรับรายจ่ายเอง เห็นรายวันในปฏิทิน สรุปชัดทุกเดือน</p>
@@ -36,8 +40,13 @@
         <label>รหัสผ่าน
           <input id="loginPassword" type="password" autocomplete="current-password" placeholder="อย่างน้อย 6 ตัว" required />
         </label>
-        <button class="primary-btn" type="submit">เข้าสู่ระบบ</button>
-        <button id="demoLogin" class="ghost-btn" type="button">ทดลองใช้งานด้วยบัญชีตัวอย่าง</button>
+        <button class="primary-btn btn btn-primary" type="submit">เข้าสู่ระบบ</button>
+        <button id="googleLogin" class="google-btn btn btn-secondary" type="button" disabled>
+          <span class="google-mark" aria-hidden="true">G</span>
+          <span>เข้าสู่ระบบด้วย Google</span>
+        </button>
+        <p id="googleLoginStatus" class="auth-status">ยังไม่ได้ตั้งค่า Google Login</p>
+        <button id="demoLogin" class="ghost-btn btn btn-secondary" type="button">ทดลองใช้งานด้วยบัญชีตัวอย่าง</button>
       </form>
 
       <form id="signupForm" class="auth-form hidden">
@@ -50,8 +59,8 @@
         <label>รหัสผ่าน
           <input id="signupPassword" type="password" autocomplete="new-password" minlength="6" placeholder="อย่างน้อย 6 ตัว" required />
         </label>
-        <button class="primary-btn" type="submit">สร้างบัญชี</button>
-        <p class="hint">เวอร์ชันนี้เป็นต้นแบบ เก็บบัญชีไว้ในเครื่องก่อน ต่อจริงกับ Supabase ได้ในขั้นถัดไป</p>
+        <button class="primary-btn btn btn-primary" type="submit">สร้างบัญชี</button>
+      <p class="hint">เวอร์ชันนี้ยังเก็บ Email/Password ในเครื่อง ส่วน Google Login ใช้บัญชี Google เมื่อมีการตั้งค่า Client ID</p>
       </form>
     </section>
   </div>
@@ -64,8 +73,12 @@
         <p id="syncStatus" class="sync-status">Local only</p>
       </div>
       <div class="top-actions">
-        <button id="syncNow" class="icon-btn" aria-label="Sync ข้อมูล">🔄</button>
-        <button id="themeToggle" class="icon-btn" aria-label="เปลี่ยนโหมดสี">🌙</button>
+        <button id="syncNow" class="icon-btn" aria-label="Sync ข้อมูล" title="Sync ข้อมูล">
+          <img src="icons/menu/menu-sync.svg" alt="" class="top-icon" />
+        </button>
+        <button id="themeToggle" class="icon-btn" aria-label="เปลี่ยนโหมดสี" title="เปลี่ยนโหมดสี">
+          <img src="icons/menu/menu-dark.svg" alt="" class="top-icon" />
+        </button>
       </div>
     </header>
 
@@ -91,7 +104,7 @@
         <section class="panel calendar-panel">
           <div class="panel-head calendar-head">
             <button id="prevMonth" class="icon-btn" aria-label="เดือนก่อนหน้า">‹</button>
-            <h2 id="calendarTitle">เดือน</h2>
+            <h2 class="icon-title"><img src="icons/menu/menu-calendar.svg" alt="" class="cozy-icon" /><span id="calendarTitle">เดือน</span></h2>
             <button id="nextMonth" class="icon-btn" aria-label="เดือนถัดไป">›</button>
           </div>
           <div class="weekday-row"><span>จ</span><span>อ</span><span>พ</span><span>พฤ</span><span>ศ</span><span>ส</span><span>อา</span></div>
@@ -111,14 +124,14 @@
         <section class="panel input-panel">
           <div class="panel-head">
             <h2>เพิ่มรายการ</h2>
-            <button id="clearForm" class="text-btn">ล้าง</button>
+            <button id="clearForm" class="text-btn btn btn-subtle btn-sm">ล้าง</button>
           </div>
           <form id="transactionForm">
             <input type="hidden" id="editId" />
             <label>วันที่<input type="date" id="date" required /></label>
             <div class="segmented" role="tablist" aria-label="ประเภทรายการ">
-              <button type="button" class="seg active" data-type="income">รายรับ</button>
-              <button type="button" class="seg" data-type="expense">รายจ่าย</button>
+              <button type="button" class="seg active" data-type="income"><img src="icons/menu/menu-income.svg" alt="" class="cozy-icon" />รายรับ</button>
+              <button type="button" class="seg" data-type="expense"><img src="icons/menu/menu-expense.svg" alt="" class="cozy-icon" />รายจ่าย</button>
             </div>
             <label>จำนวนเงิน<input type="number" id="amount" inputmode="decimal" min="0" step="0.01" placeholder="เช่น 250" required /></label>
             <label>หมวดหมู่
@@ -134,7 +147,7 @@
               <span class="hint">บีบอัดรูปและเก็บในเครื่อง เหมาะกับภาพใบเสร็จ 1 รูปต่อรายการ</span>
             </label>
             <div id="receiptPreview" class="receipt-preview hidden"></div>
-            <button class="primary-btn" type="submit" id="submitBtn">บันทึก</button>
+            <button class="primary-btn btn btn-primary" type="submit" id="submitBtn">บันทึก</button>
           </form>
         </section>
       </section>
@@ -153,7 +166,7 @@
               <div id="budgetCategoryChips" class="category-chips" aria-label="หมวดงบประมาณ"></div>
             </label>
             <label>งบต่อเดือน<input id="budgetAmount" type="number" inputmode="decimal" min="0" step="1" placeholder="เช่น 5000" required /></label>
-            <button class="primary-btn" type="submit">บันทึกงบ</button>
+            <button class="primary-btn btn btn-primary" type="submit">บันทึกงบ</button>
           </form>
         </section>
         <section class="panel">
@@ -166,7 +179,7 @@
         <section class="panel">
           <div class="panel-head">
             <h2>กราฟรายเดือน</h2>
-            <button id="exportCsv" class="text-btn">Export CSV</button>
+            <button id="exportCsv" class="text-btn btn btn-subtle btn-sm">Export CSV</button>
           </div>
           <canvas id="monthlyChart" width="420" height="240" aria-label="กราฟรายเดือน"></canvas>
         </section>
@@ -213,7 +226,7 @@
             </label>
             <label>ชื่อหมวดใหม่<input id="categoryName" type="text" placeholder="เช่น ค่าแมว / ลูกค้า A / ค่าโรงงาน" /></label>
             <label>ไอคอน / Emoji<input id="categoryIcon" type="text" maxlength="4" placeholder="เช่น 🐱" /></label>
-            <button class="primary-btn" type="submit">เพิ่มหมวด</button>
+            <button class="primary-btn btn btn-primary" type="submit">เพิ่มหมวด</button>
           </form>
           <div class="category-tabs" role="tablist" aria-label="ดูหมวด">
             <button id="showExpenseCats" class="cat-tab active" type="button">รายจ่าย</button>
@@ -222,41 +235,56 @@
           <div id="customCategoryList" class="custom-category-list"></div>
           <p class="hint">หมวดมาตรฐานลบไม่ได้ แต่หมวดที่เพิ่มเองสามารถลบได้ ถ้ามีรายการเก่า ระบบยังแสดงชื่อหมวดนั้นในประวัติได้ตามปกติ</p>
         </section>
-        <section class="panel">
-          <div class="panel-head"><h2>Sync / Backup</h2><span class="pill" id="lastBackup">ยังไม่ Backup</span></div>
+        <section class="panel backup-panel">
+          <div class="panel-head"><h2>ซิงก์และสำรองข้อมูล</h2><span class="pill" id="lastBackup">ยังไม่สำรอง</span></div>
+          <p class="sync-copy">ข้อมูลเก็บในเครื่องนี้เป็นหลัก เมื่อเชื่อมต่อ Google Drive แอปจะสำรองเป็นไฟล์ JSON ใน appDataFolder ของบัญชี Google ผู้ใช้ และยังสำรอง/นำกลับด้วยไฟล์ JSON บนเครื่องได้เหมือนเดิม</p>
           <div class="settings-grid">
             <label>โหมด Sync
               <select id="syncMode">
                 <option value="local">Local only</option>
-                <option value="supabase">Supabase</option>
                 <option value="google-drive">Google Drive</option>
               </select>
             </label>
-            <label>Supabase URL<input id="supabaseUrl" type="url" placeholder="https://xxxx.supabase.co" /></label>
-            <label>Supabase Anon Key<input id="supabaseKey" type="password" placeholder="ใส่ anon key" /></label>
-            <label>Google Drive Folder ID<input id="driveFolder" type="text" placeholder="ใส่ Folder ID" /></label>
           </div>
           <div class="button-row">
-            <button id="backupJson" class="primary-btn" type="button">Backup เป็น JSON</button>
-            <label class="ghost-file">Restore JSON<input id="restoreJson" type="file" accept="application/json" /></label>
+            <button id="connectGoogleDrive" class="ghost-btn btn btn-secondary" type="button">เชื่อมต่อ Google Drive</button>
+            <button id="backupDrive" class="primary-btn btn btn-primary" type="button">สำรองข้อมูลไป Google Drive</button>
+            <button id="restoreDrive" class="ghost-btn btn btn-secondary" type="button">ดึงข้อมูลจาก Google Drive</button>
+            <button id="backupJson" class="ghost-btn btn btn-secondary" type="button">สำรองข้อมูลเป็น JSON</button>
+            <label class="ghost-file btn btn-secondary">นำข้อมูลกลับจาก JSON<input id="restoreJson" type="file" accept="application/json" /></label>
           </div>
-          <p class="hint">ปุ่ม Sync ตอนนี้จำลองสถานะและเตรียมช่องตั้งค่าไว้ให้ Codex ต่อ API จริงกับ Supabase / Google Drive ได้</p>
+          <p class="hint">Google Drive ใช้ scope drive.appdata และไฟล์ชื่อ i-have-money-backup.json ในพื้นที่แอปของบัญชี Google นั้น</p>
         </section>
 
         <section class="panel">
           <div class="panel-head"><h2>บัญชี</h2></div>
           <p id="accountInfo" class="account-info"></p>
-          <button id="logoutBtn" class="danger-btn" type="button">ออกจากระบบ</button>
+          <button id="logoutBtn" class="danger-btn btn btn-danger" type="button">ออกจากระบบ</button>
         </section>
       </section>
     </main>
 
     <nav class="bottom-nav" aria-label="เมนูหลัก">
-      <button class="nav-btn active" data-view="dashboard">🏠<span>หน้าแรก</span></button>
-      <button class="nav-btn" data-view="add">➕<span>เพิ่ม</span></button>
-      <button class="nav-btn" data-view="budget">🎯<span>งบ</span></button>
-      <button class="nav-btn" data-view="reports">📊<span>กราฟ</span></button>
-      <button class="nav-btn" data-view="settings">⚙️<span>ตั้งค่า</span></button>
+      <button class="nav-btn active" data-view="dashboard">
+        <img src="icons/menu/menu-home.svg" alt="" class="nav-icon" />
+        <span>หน้าแรก</span>
+      </button>
+      <button class="nav-btn" data-view="add">
+        <img src="icons/menu/menu-add.svg" alt="" class="nav-icon" />
+        <span>เพิ่ม</span>
+      </button>
+      <button class="nav-btn" data-view="budget">
+        <img src="icons/menu/menu-budget.svg" alt="" class="nav-icon" />
+        <span>งบ</span>
+      </button>
+      <button class="nav-btn" data-view="reports">
+        <img src="icons/menu/menu-chart.svg" alt="" class="nav-icon" />
+        <span>กราฟ</span>
+      </button>
+      <button class="nav-btn" data-view="settings">
+        <img src="icons/menu/menu-settings.svg" alt="" class="nav-icon" />
+        <span>ตั้งค่า</span>
+      </button>
     </nav>
   </div>
 
@@ -267,14 +295,14 @@
         <div>
           <strong class="tx-note"></strong>
           <p class="tx-meta"></p>
-          <button class="receipt-link hidden" type="button">ดูใบเสร็จ</button>
+          <button class="receipt-link btn btn-subtle btn-sm hidden" type="button">ดูใบเสร็จ</button>
         </div>
       </div>
       <div class="tx-right">
         <strong class="tx-amount"></strong>
         <div class="tx-actions">
-          <button class="edit-btn" type="button">แก้ไข</button>
-          <button class="delete-btn" type="button">ลบ</button>
+          <button class="edit-btn btn btn-subtle btn-sm" type="button">แก้ไข</button>
+          <button class="delete-btn btn btn-danger btn-sm" type="button">ลบ</button>
         </div>
       </div>
     </article>
@@ -285,6 +313,6 @@
     <img id="receiptImage" alt="รูปใบเสร็จ" />
   </dialog>
 
-  <script src="app.js"></script>
+  <script src="app.js?v=icons-v5"></script>
 </body>
 </html>

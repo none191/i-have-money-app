@@ -15,8 +15,8 @@ Mobile-first PWA สำหรับจดรายรับรายจ่าย
 - กราฟรายรับ-รายจ่ายย้อนหลัง 6 เดือน
 - สรุปรายจ่ายตามหมวดหมู่
 - Export CSV
-- Backup เป็น JSON / Restore JSON
-- หน้าเตรียม Sync กับ Supabase และ Google Drive
+- สำรองข้อมูล / นำข้อมูลกลับ ด้วยไฟล์ JSON
+- Google Login และ Google Drive Sync ผ่าน `drive.appdata`
 - Dark mode
 - PWA เปิดบนมือถือแล้ว Add to Home Screen ได้
 - เก็บข้อมูลในเครื่องด้วย localStorage
@@ -24,7 +24,7 @@ Mobile-first PWA สำหรับจดรายรับรายจ่าย
 ## หมายเหตุสำคัญ
 เวอร์ชันนี้เป็นต้นแบบที่รันได้ทันทีโดยไม่ต้องมี Server ข้อมูล Login, รายการเงิน, รูปใบเสร็จ และงบประมาณจะเก็บในเครื่องของผู้ใช้ก่อน
 
-ส่วน Supabase / Google Drive มีหน้า Settings และช่อง config เตรียมไว้แล้ว แต่ยังไม่ได้ต่อ API จริง เพื่อให้ Codex สามารถต่อ Backend ต่อได้ง่ายในขั้นถัดไป
+แนวทางปัจจุบันไม่ใช้ Supabase แล้ว ข้อมูลหลักยังอยู่ใน `localStorage` เพื่อใช้งาน offline และสามารถซิงก์/สำรองเป็นไฟล์ `i-have-money-backup.json` ใน Google Drive appDataFolder ของบัญชี Google ผู้ใช้
 
 ## วิธีเปิดใช้งาน
 1. แตกไฟล์ ZIP
@@ -41,10 +41,8 @@ python3 -m http.server 8080
 กดปุ่ม “ทดลองใช้งานด้วยบัญชีตัวอย่าง” ในหน้า Login
 
 ## สิ่งที่ควรให้ Codex ทำต่อ
-- ต่อ Supabase Auth จริง แทน mock login ใน localStorage
-- สร้างตาราง `profiles`, `transactions`, `budgets`, `receipts`
-- อัปโหลดรูปใบเสร็จเข้า Supabase Storage
-- ต่อ Google Drive OAuth และ backup อัตโนมัติ
+- ปรับปรุง Google Drive conflict resolution ให้เป็น UI modal แทน `prompt`
+- แยกรูปใบเสร็จเป็นไฟล์ใน Google Drive แล้วให้ JSON เก็บ `fileId`
 - เพิ่ม PIN / Face ID สำหรับมือถือ
 - เพิ่มกราฟละเอียดรายวัน รายสัปดาห์ รายปี
 - ทำ OCR อ่านใบเสร็จ
@@ -73,7 +71,7 @@ python3 -m http.server 8080
 - Reset ค่าเลือกไฟล์หลัง Restore เพื่อเลือกไฟล์เดิมซ้ำได้
 - เพิ่ม fallback ID เมื่อ browser ไม่มี `crypto.randomUUID()`
 
-หมายเหตุ: Supabase / Google Drive ยังเป็น mock/config UI ต้องต่อ API จริงในขั้นถัดไป
+หมายเหตุ: Google Drive Sync ใช้ browser Google Identity Services และ Drive API โดยยังมี `localStorage` เป็น fallback/offline
 
 ## v4.1 — รอบตรวจสอบล่าสุด (Bug fixes & UX)
 
@@ -81,7 +79,7 @@ python3 -m http.server 8080
 - **ไอคอนหมวดถูกเขียนทับโดยไม่ตั้งใจ**: เดิมทุกครั้งที่พิมพ์ชื่อหมวดเดิมซ้ำตอนเพิ่มรายการ/ตั้งงบ ระบบจะรีเซ็ตไอคอนของหมวดนั้นกลับเป็นค่าเริ่มต้น (📝 หรือ 🎯) ทำให้ไอคอนที่ตั้งเองหายไปเรื่อย ๆ ตอนนี้ระบบจะเขียนทับไอคอนเฉพาะตอนสร้างหมวดใหม่จริง ๆ หรือแก้ไขหมวดผ่านหน้าจัดการหมวดเท่านั้น
 - **ไอคอนหมวดข้ามบัญชีผู้ใช้**: เดิมถ้าออกจากระบบแล้วเข้าใช้บัญชีอื่นในเครื่องเดียวกัน ไอคอนหมวดที่ตั้งเองของบัญชีก่อนหน้ายังค้างอยู่ในหน่วยความจำ (ไม่ล้างค่า) ตอนนี้ระบบจะล้างและสร้าง iconMap ใหม่ทุกครั้งที่ Login หรือ Restore ข้อมูล
 - **Backup มี password hash ติดไปด้วย**: ไฟล์ Backup JSON เดิมแนบ passwordHash ของผู้ใช้ไปด้วย ซึ่งไม่ควรอยู่ในไฟล์ที่อาจแชร์ต่อ ตอนนี้ Backup จะเก็บเฉพาะชื่อ/อีเมล/วันที่สมัคร
-- **Restore ไม่ดึงค่า Sync Settings กลับมา**: เดิม Restore JSON ไม่คืนค่าการตั้งค่า Sync mode / Supabase / Google Drive Folder ตอนนี้ Restore แล้วจะคืนค่าครบ
+- **Restore ไม่ดึงค่า Sync Settings กลับมา**: เดิม Restore JSON ไม่คืนค่าการตั้งค่า Sync mode ตอนนี้ Restore แล้วจะคืนค่าครบ
 - **ลำดับตรวจสอบฟอร์มเพิ่มรายการ**: ปรับให้ตรวจวันที่ก่อนดึงค่าหมวด และหยุดบันทึกทันทีถ้าหมวดว่าง กันกรณี edge case ที่ validation ของ browser ถูกข้าม
 
 **เพิ่มใหม่**
@@ -107,3 +105,89 @@ python3 -m http.server 8080
 - `icons/` (ใหม่) — icon-192.png, icon-512.png, icon-maskable-512.png, apple-touch-icon.png
 - `icon-maskable.svg` (ใหม่) — ต้นฉบับ SVG สำหรับสร้างไอคอน maskable
 
+## v4.2 — Mobile Sync/Backup polish & hardening
+
+**UX / Copy**
+- เปลี่ยนหน้า “Sync / Backup” เป็น “ซิงก์และสำรองข้อมูล” พร้อมคำอธิบายสั้น ๆ ว่าข้อมูลยังเก็บในเครื่องและไฟล์ JSON ใช้ย้ายเครื่อง/กู้คืน
+- เปลี่ยนปุ่ม **“Backup เป็น JSON”** เป็น **“สำรองข้อมูล”**
+- เปลี่ยน **“Restore JSON”** เป็น **“นำข้อมูลกลับ”**
+- เคยซ่อน provider credentials ไว้ใต้ **“ตั้งค่าขั้นสูง”**; แนวทางปัจจุบันใช้ `google.config.js` ภายนอกแทนการกรอกใน UI
+- ปรับปุ่มสำรอง/นำข้อมูลกลับบนมือถือให้เป็นปุ่มเต็มแถวเมื่อหน้าจอแคบ และคง touch target อย่างน้อย 48px
+
+**Bug / Security hardening**
+- แก้ XSS edge case ในรายงานหมวด งบประมาณ และหน้าจัดการหมวด โดย escape ชื่อหมวด/ไอคอนที่มาจากผู้ใช้หรือไฟล์ restore ก่อน render
+- กันชื่อหมวด/งบประมาณที่เป็น object key อันตราย เช่น `__proto__`, `prototype`, `constructor`
+- Normalize budgets, category icons และ sync settings ตอน load/restore เพื่อกัน data shape เพี้ยนจาก localStorage หรือไฟล์สำรอง
+- แก้ Backup timestamp ให้ payload ในไฟล์ JSON และ UI ใช้เวลาเดียวกัน
+- เพิ่ม CSV formula-injection guard ตอน Export CSV
+- เพิ่ม error path ให้การอ่าน/บีบอัดรูปใบเสร็จ ไม่ค้างเงียบเมื่อไฟล์รูปเสีย
+- เพิ่ม favicon link เพื่อลด `/favicon.ico` 404
+- แก้ service worker install ให้ bypass HTTP cache ด้วย `cache: "reload"` ตอน precache asset หลัง bump version
+
+**สถานะ Backend**
+- รอบนี้ยังเป็น mock/config UI; แนวทางปัจจุบันเปลี่ยนเป็น Google Drive appDataFolder เท่านั้น
+
+## v4.3 — Responsive UX/UI pass
+
+- ปรับ layout จาก mobile-only shell เป็น responsive shell ที่รองรับทั้งมือถือและ PC
+- หน้าเพิ่มรายการแก้ overflow ของ `date`, `number`, `text`, `file`, segmented control, chips และปุ่มบันทึก ให้อยู่ใน card เสมอ
+- หมวดหมู่แบบ chip เปลี่ยนจากเลื่อนแนวนอนเป็น wrap ลงบรรทัด เพื่อไม่มี horizontal overflow บนมือถือ
+- เพิ่ม desktop grid ให้ Dashboard / Budget / Reports / Settings ใช้พื้นที่จอกว้างได้ดีขึ้น โดยยังคง navigation และฟีเจอร์เดิม
+- เพิ่ม CSS guard เช่น `min-width: 0`, `max-width: 100%`, `overflow-x: hidden` และ versioned stylesheet URL เพื่อกัน PWA cache ส่ง CSS เก่า
+
+## v4.4 — Cozy SVG menu icons
+
+- เปลี่ยน Bottom Navigation จาก emoji เป็น SVG ใน `icons/menu/`
+- เปลี่ยนปุ่มด้านบน Sync และ Dark Mode เป็น SVG icon
+- เพิ่มไอคอน SVG ในปฏิทิน และปุ่มเลือกประเภทรายรับ/รายจ่าย
+- เพิ่ม class `.nav-icon`, `.top-icon`, `.cozy-icon` เพื่อควบคุมขนาดไอคอนให้ไม่ล้นปุ่ม
+- ปรับ active/hover ของ nav และ top buttons เป็นโทน minimal cozy: cream, beige, sage green, warm brown พร้อม shadow นุ่ม
+- เพิ่ม SVG menu ทั้งหมดเข้า service worker precache และ version `styles.css` / `app.js` เพื่อกัน cache เก่าทับไอคอน
+
+## v4.5 — Login brand logo
+
+- เพิ่มโลโก้หน้า Auth ที่ `icons/login/login-brand.png`
+- เปลี่ยน brand logo หน้า Login/Register เป็น `<img alt="I Have Money">`
+- เพิ่ม `.brand-logo-img` และปรับขนาด logo ให้เหมาะกับ mobile/desktop โดยไม่ล้นกรอบ
+- เพิ่มรูป logo เข้า service worker precache และ version stylesheet เพื่อกัน cache เก่า
+
+## v4.6 — Google Login preparation
+
+- เพิ่มปุ่ม **“เข้าสู่ระบบด้วย Google”** ใต้ปุ่มเข้าสู่ระบบเดิม และเหนือบัญชีทดลอง
+- ปุ่ม Google Login จะ disabled ถ้ายังไม่มี config
+- แนวทาง Supabase เดิมถูกยกเลิกใน v4.8
+
+## v4.7 — Light cozy Auth palette
+
+- แยกชุดสี Auth/Login/Register ให้เป็นโทนสว่าง cream / beige / sage green แม้เปิด app dark mode
+- ปรับ `.auth-screen`, `.brand-card`, `.auth-card`, `.auth-tabs`, input, Google button และ demo button ให้อ่านง่ายขึ้น
+- เปลี่ยนโลโก้หน้า Auth ไปใช้ `icons/login/login-brand-transparent.png` เพื่อแก้พื้น checkerboard/กล่องติดมากับไฟล์เดิม
+- เพิ่มโลโก้โปร่งใสเข้า service worker precache และ version stylesheet เป็น `auth-light-1`
+## v4.8 — Google Account + Google Drive appDataFolder
+
+- ถอด Supabase ออกจาก flow หลักทั้งหมด และย้าย schema เดิมไป `docs/archive/supabase-schema.sql`
+- เพิ่ม `google.config.example.js` และ ignore `google.config.js`
+- Google Login ใช้ Google Identity Services และเก็บ profile พื้นฐาน: `email`, `name`, `picture`, `googleId`
+- Google Drive Sync ใช้ scope `https://www.googleapis.com/auth/drive.appdata`
+- Drive backup ใช้ไฟล์ `i-have-money-backup.json` ใน appDataFolder ของบัญชี Google ผู้ใช้
+- Backup payload ใช้ `buildBackupPayload()` และ Restore ใช้ `restoreFromBackupPayload(payload)` ทั้ง JSON local และ Drive
+- เมื่อ login Google และพบ backup บน Drive แอปจะถามก่อนว่าจะใช้ข้อมูลบนเครื่อง, ใช้ข้อมูลจาก Drive, หรือ merge
+- ก่อน restore จะสร้าง local backup อัตโนมัติไว้ใน `localStorage`
+- Receipt image ยังเก็บ base64 ใน JSON เหมือนเดิม ถ้า backup ใหญ่เกินจะแจ้ง TODO ให้แยกรูปเป็นไฟล์ Drive ภายหลัง
+- Email/password login และ demo account เดิมยังใช้งานได้
+
+### วิธีตั้งค่า Google Cloud
+
+1. สร้าง OAuth Client ID แบบ Web application ใน Google Cloud Console
+2. เพิ่ม `http://localhost:8080` ใน Authorized JavaScript origins
+3. เปิด Google Drive API
+4. คัดลอก `google.config.example.js` เป็น `google.config.js`
+5. ใส่ `GOOGLE_CLIENT_ID`
+6. เปิดแอปผ่าน local server แล้วกด “เข้าสู่ระบบด้วย Google”
+
+## v5 — Minimal cozy app icons
+
+- เปลี่ยน favicon/browser tab icon ไปใช้ `icons/favicon.svg?v=5`
+- สร้าง PWA icon ชุดใหม่จากสไตล์ minimal cozy: `icons/icon-192.png`, `icons/icon-512.png`, `icons/icon-maskable-512.png`, `icons/apple-touch-icon.png`
+- ตั้ง `manifest.webmanifest?v=5`, `theme_color` และ `background_color` เป็น `#faf7f1`
+- อัปเดต service worker cache เป็น `i-have-money-v5-minimal-icons-2`
