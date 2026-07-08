@@ -1,0 +1,10 @@
+services:
+  i-have-money-app:
+    image: nginx:alpine
+    container_name: i-have-money-app
+    restart: unless-stopped
+    ports:
+      - "8090:80"
+    volumes:
+      - ./:/usr/share/nginx/html:ro
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
