@@ -1015,15 +1015,26 @@ function restoreJson(event) {
   if (!file) return;
   const reader = new FileReader();
   reader.onload = () => {
+    let data;
     try {
-      const data = JSON.parse(reader.result);
-      restoreFromBackupPayload(data);
-      event.target.value = "";
-      alert("นำข้อมูลกลับเรียบร้อย");
+      data = JSON.parse(reader.result);
     } catch {
       event.target.value = "";
       alert("ไฟล์สำรองข้อมูลไม่ถูกต้อง");
+      return;
     }
+    const confirmed = confirm(
+      "นำข้อมูลกลับจากไฟล์ JSON จะเขียนทับข้อมูลปัจจุบันในเครื่องนี้\n" +
+      "ระบบจะสำรองข้อมูลปัจจุบันไว้อัตโนมัติก่อนเริ่มนำข้อมูลกลับ\n" +
+      "ต้องการดำเนินการต่อหรือไม่?"
+    );
+    if (!confirmed) {
+      event.target.value = "";
+      return;
+    }
+    const restored = restoreFromBackupPayload(data);
+    event.target.value = "";
+    if (restored) alert("นำข้อมูลกลับเรียบร้อย");
   };
   reader.readAsText(file);
 }
@@ -1054,6 +1065,17 @@ function buildBackupPayload() {
 }
 function restoreFromBackupPayload(payload) {
   if (!payload || typeof payload !== "object") throw new Error("Invalid backup payload");
+  const backupEmail = String(payload.user?.email || "").trim().toLowerCase();
+  const activeEmail = String(currentUser?.email || "").trim().toLowerCase();
+  if (backupEmail && activeEmail && backupEmail !== activeEmail) {
+    const proceed = confirm(
+      `ไฟล์สำรองข้อมูลนี้เป็นของบัญชี "${payload.user.email}"\n` +
+      `แต่ตอนนี้เข้าสู่ระบบด้วยบัญชี "${currentUser.email}"\n` +
+      "ถ้าดำเนินการต่อ ข้อมูลของบัญชีนี้จะถูกเขียนทับด้วยข้อมูลจากบัญชีอื่น\n" +
+      "ต้องการดำเนินการต่อหรือไม่?"
+    );
+    if (!proceed) return false;
+  }
   createAutomaticLocalBackup();
   transactions = Array.isArray(payload.transactions) ? payload.transactions.filter(item => item && typeof item === "object") : [];
   budgets = normalizeBudgets(payload.budgets);
@@ -1077,6 +1099,7 @@ function restoreFromBackupPayload(payload) {
   updateBudgetOptions();
   renderCategoryManager();
   render();
+  return true;
 }
 function normalizeBackupCategories(value) {
   const source = value && typeof value === "object" && !Array.isArray(value) ? value : {};
@@ -1230,7 +1253,11 @@ async function syncFromGoogleDrive() {
       renderSettings();
       return;
     }
-    restoreFromBackupPayload(payload);
+    const restored = restoreFromBackupPayload(payload);
+    if (!restored) {
+      renderSettings();
+      return;
+    }
     settings.syncMode = "google-drive";
     settings.googleDriveConnected = "true";
     settings.lastSync = new Date().toISOString();
@@ -1256,12 +1283,12 @@ async function resolveDriveConflict(file) {
   const choice = prompt("พบไฟล์สำรองบน Google Drive\nพิมพ์ 1 ใช้ข้อมูลบนเครื่อง\nพิมพ์ 2 ใช้ข้อมูลจาก Google Drive\nพิมพ์ 3 รวมข้อมูลแบบ merge", "1");
   if (choice === "2") {
     const payload = await downloadDriveBackupFile(file.id);
-    restoreFromBackupPayload(payload);
+    if (!restoreFromBackupPayload(payload)) return "local";
     return "drive";
   }
   if (choice === "3") {
     const payload = await downloadDriveBackupFile(file.id);
-    restoreFromBackupPayload(mergeBackupPayloads(buildBackupPayload(), payload));
+    if (!restoreFromBackupPayload(mergeBackupPayloads(buildBackupPayload(), payload))) return "local";
     await syncToGoogleDrive();
     return "merge";
   }

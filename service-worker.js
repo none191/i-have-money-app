@@ -1,16 +1,16 @@
-const CACHE_NAME = "i-have-money-v5-settings-polish-3";
+const CACHE_NAME = "i-have-money-v5-phase2-cleanup";
 const ASSETS = [
   "./",
   "./index.html",
   "./styles.css?v=settings-polish-3",
-  "./app.js?v=icons-v5",
+  "./app.js?v=phase2",
   "./manifest.webmanifest?v=5",
   "./icons/favicon.svg?v=5",
   "./icons/icon-192.png?v=5",
   "./icons/icon-512.png?v=5",
   "./icons/icon-maskable-512.png?v=5",
   "./icons/apple-touch-icon.png?v=5",
-  "./icons/login/login-brand-transparent.png",
+  "./icons/login/login-brand-transparent.png?v=2",
   "./icons/menu/menu-home.svg",
   "./icons/menu/menu-add.svg",
   "./icons/menu/menu-budget.svg",

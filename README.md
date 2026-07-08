@@ -103,7 +103,7 @@ python3 -m http.server 8080
 - `manifest.webmanifest` — โครงสร้างไอคอน/ข้อมูล PWA ใหม่ทั้งหมด
 - `service-worker.js` — cache name ใหม่ + ไฟล์ไอคอนที่เพิ่ม
 - `icons/` (ใหม่) — icon-192.png, icon-512.png, icon-maskable-512.png, apple-touch-icon.png
-- `icon-maskable.svg` (ใหม่) — ต้นฉบับ SVG สำหรับสร้างไอคอน maskable
+- `icons/icon-maskable-512.png` (ใหม่) — ไอคอน maskable สำหรับ Android/Chrome (ไฟล์ต้นฉบับ SVG ถูกลบออกใน Phase 2 cleanup เหลือเฉพาะ PNG ที่ generate แล้ว)
 
 ## v4.2 — Mobile Sync/Backup polish & hardening
 
@@ -146,7 +146,7 @@ python3 -m http.server 8080
 
 ## v4.5 — Login brand logo
 
-- เพิ่มโลโก้หน้า Auth ที่ `icons/login/login-brand.png`
+- เพิ่มโลโก้หน้า Auth (ต่อมาเปลี่ยนเป็น `icons/login/login-brand-transparent.png` ใน v4.7 และลบไฟล์เดิมออกใน Phase 2 cleanup)
 - เปลี่ยน brand logo หน้า Login/Register เป็น `<img alt="I Have Money">`
 - เพิ่ม `.brand-logo-img` และปรับขนาด logo ให้เหมาะกับ mobile/desktop โดยไม่ล้นกรอบ
 - เพิ่มรูป logo เข้า service worker precache และ version stylesheet เพื่อกัน cache เก่า
@@ -191,3 +191,35 @@ python3 -m http.server 8080
 - สร้าง PWA icon ชุดใหม่จากสไตล์ minimal cozy: `icons/icon-192.png`, `icons/icon-512.png`, `icons/icon-maskable-512.png`, `icons/apple-touch-icon.png`
 - ตั้ง `manifest.webmanifest?v=5`, `theme_color` และ `background_color` เป็น `#faf7f1`
 - อัปเดต service worker cache เป็น `i-have-money-v5-minimal-icons-2`
+
+## Phase 1 — Restore safety & manifest fix
+
+**Bug ที่แก้**
+- `restoreJson()`: เพิ่ม `confirm()` เตือนผู้ใช้ก่อนเขียนทับข้อมูล พร้อมแจ้งว่าระบบจะสำรองข้อมูลปัจจุบันอัตโนมัติก่อน; ถ้ากด "ยกเลิก" จะไม่ restore เลยและไม่มี alert ใด ๆ
+- `restoreFromBackupPayload()`: เพิ่มเช็ค email mismatch — ถ้าไฟล์ backup เป็นของบัญชีอื่น ระบบจะแจ้งชื่อบัญชีทั้งสองฝั่งและถามยืนยันก่อน; ถ้ากด "ยกเลิก" จะไม่แตะข้อมูลใด ๆ เลย; ฟังก์ชันเปลี่ยนจาก `void` เป็น `boolean` เพื่อให้ caller ทุกจุดรู้ว่า restore เกิดขึ้นจริงหรือไม่
+- `syncFromGoogleDrive()` และ `resolveDriveConflict()`: ปรับให้เช็คค่า return จาก `restoreFromBackupPayload()` เพื่อไม่ให้ขึ้น "เรียบร้อย" หลอกตอนผู้ใช้ยกเลิกกลางทาง
+
+**Manifest**
+- `manifest.webmanifest`: เปลี่ยน `"id": "/"` → `"id": "./"` ให้ตรงกับ `scope`/`start_url` และใช้งานบน GitHub Pages project site ได้ถูกต้อง
+
+**ไฟล์ที่เปลี่ยน**: `app.js`, `manifest.webmanifest`
+
+## Phase 2 — Asset cleanup & service worker update
+
+**ลบไฟล์ที่ไม่ได้ใช้งาน** (ตรวจ grep ทั้งโปรเจกต์ก่อนลบทุกไฟล์)
+- `icon.svg` (root) — ถูกแทนที่โดย `icons/favicon.svg` ไม่มีที่ไหนอ้างอิงใน html/js/manifest
+- `icon-maskable.svg` (root) — ไม่มีที่ไหนอ้างอิงใน html/js/manifest
+- `icons/login/login-brand.png` — ไม่ถูกใช้งาน (แทนที่โดย `login-brand-transparent.png` ตั้งแต่ v4.7)
+- `icons/menu/login-brand.png` — ซ้ำกับไฟล์ข้างต้น ไม่มีที่ไหนอ้างอิง
+
+**บีบอัดรูป**
+- `icons/login/login-brand-transparent.png`: 1105×1089 px / 1.23 MB → 360×355 px / 114 KB (ลด 90.9%) ยังคง RGBA transparent, คมพอสำหรับแสดงบนหน้า Login ทั้ง mobile/desktop
+
+**Service worker**
+- `CACHE_NAME` ใหม่: `i-have-money-v5-phase2-cleanup`
+- เพิ่ม `?v=2` ใน URL ของโลโก้ (`login-brand-transparent.png?v=2`) เพื่อบังคับ browser โหลดไฟล์ที่ย่อแล้ว
+- ตรวจ cache list ทั้งหมด: ทุก path ยังมีไฟล์จริงบนดิสก์ครบ (22 entries, ALL OK)
+- ไม่มี `google.config.js` ใน cache list
+
+**ไฟล์ที่เปลี่ยน**: `service-worker.js`, `index.html`, `icons/login/login-brand-transparent.png`
+**ไฟล์ที่ลบ**: `icon.svg`, `icon-maskable.svg`, `icons/login/login-brand.png`, `icons/menu/login-brand.png`

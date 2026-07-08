@@ -17,7 +17,9 @@
 - Button system is minimal-first: compact `.btn`, `.btn-primary`, `.btn-secondary`, `.btn-subtle`, `.btn-danger`, `.btn-sm`, and `.btn-compact` classes map old button classes into a lighter hierarchy.
 - Desktop Settings layout uses a compact 46/54 two-column grid: Theme/Sync/Account on the left, category manager on the right with only the list scrolling; top spacing and desktop bottom nav are intentionally tight.
 - Auth/Login/Register brand logo uses `icons/login/login-brand-transparent.png` to avoid the checkerboard/boxed background from the source PNG.
+- Login brand logo is sized at 360×355 px (resized from 1105×1089 in Phase 2 cleanup); original non-transparent PNGs have been removed.
 - Without `google.config.js`, the Google button stays disabled with "ยังไม่ได้ตั้งค่า Google Client ID"; email/password and demo login continue.
+- `restoreFromBackupPayload()` always asks for confirmation before overwriting local data, and warns separately if the backup belongs to a different Google account. It returns `boolean` so callers know whether a restore actually happened.
 
 ## Decisions
 - Google Client ID lives in local `google.config.js`; the app UI does not collect provider secrets or folder IDs.
@@ -29,6 +31,8 @@
 - New image assets used in first-screen UI should be added to service worker precache and verified in browser with `naturalWidth > 0`.
 - Auth color variables are intentionally independent from the main app dark palette so `body.dark` does not make Login/Register heavy or low contrast.
 - Never commit `google.config.js`; keep OAuth Client ID config local even though it is a public browser identifier.
+- `restoreFromBackupPayload()` must always be called through a caller that has already asked the user for confirmation. The function returns `boolean` (`false` = user cancelled or email mismatch rejected) so callers can suppress any success message when restore did not occur.
+- Orphaned or duplicate image assets (non-transparent login brand PNG, root icon SVGs) should be removed rather than kept to avoid ambiguity and cache bloat. Grep the entire project before deleting any asset file.
 
 ## Data Contracts
 - Backup JSON includes `transactions`, `budgets`, `categories`, `categoryIcons`, `settings`, `preferences`, safe public `user` profile info, and `exportedAt`.
@@ -69,7 +73,15 @@
 - root cause: Data ownership should follow the user's Google account and live in the user's Drive appDataFolder.
 - correct: Keep Supabase out of active runtime/config/UI, archive historical schema under `docs/archive/`, and avoid reintroducing Supabase docs or keys unless the product direction changes again.
 
-## Next Steps
+### Restore overwrites data without user confirmation
+- what: `restoreJson()` called `restoreFromBackupPayload()` immediately on file selection with no `confirm()`, making it easy to accidentally overwrite all local data.
+- root cause: Guard was missing on the local JSON restore path while the Google Drive restore path already had one.
+- correct: Add `confirm()` before any call to `restoreFromBackupPayload()`, matching the Drive flow. Also add a separate `confirm()` inside `restoreFromBackupPayload()` itself if the backup email does not match the currently logged-in account.
+
+### Large unused image assets in repo
+- what: `icons/login/login-brand.png`, `icons/menu/login-brand.png` (~1.4 MB each) and root `icon.svg`/`icon-maskable.svg` were committed but never referenced by any HTML/JS/CSS/manifest.
+- root cause: Assets were added or superseded across versions without removing the originals.
+- correct: Before deleting any asset, run `grep -rn <filename>` across all source files. Only delete when no real reference remains (README/doc mentions alone do not count as live references).
 - Replace prompt-based Drive conflict resolution with an in-app modal.
 - Split receipt images into separate Google Drive files and store `fileId` in JSON when backup size becomes an issue.
 - Add automated browser tests for Google config missing state, JSON backup/restore, Drive button states, category escaping, and service worker cache refresh.
