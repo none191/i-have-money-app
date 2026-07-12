@@ -5,7 +5,7 @@
 // decision logic up to the real caches/fetch APIs.
 import { resolveFetchPlan } from "./lib/swPolicy.mjs";
 
-const CACHE_NAME = "i-have-money-v6-hardened-sw";
+const CACHE_NAME = "i-have-money-v6-hardened-sw-2";
 const ASSETS = [
   "./",
   "./index.html",
@@ -13,6 +13,7 @@ const ASSETS = [
   "./app.js?v=phase3",
   "./lib/backupSchema.mjs?v=1",
   "./lib/storageSafety.mjs?v=1",
+  "./lib/csvExport.mjs?v=1",
   "./manifest.webmanifest?v=5",
   "./icons/favicon.svg?v=5",
   "./icons/icon-192.png?v=5",

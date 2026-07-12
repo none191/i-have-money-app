@@ -1052,13 +1052,8 @@ function categoryLabelHtml(cat) {
 function exportCsv() {
   const header = ["date", "type", "category", "amount", "note", "hasReceipt"];
   const rows = transactions.map(t => [t.date, t.type, t.category, t.amount, t.note, Boolean(t.receipt)]);
-  const csv = [header, ...rows].map(row => row.map(csvCell).join(",")).join("\n");
+  const csv = window.IHM_CSV_EXPORT.buildCsv(header, rows);
   downloadFile("i-have-money-export.csv", "\ufeff" + csv, "text/csv;charset=utf-8");
-}
-function csvCell(cell) {
-  const text = String(cell ?? "");
-  const safeText = /^[=+\-@]/.test(text) ? `'${text}` : text;
-  return `"${safeText.replaceAll('"', '""')}"`;
 }
 function backupJson() {
   const payload = buildBackupPayload();
