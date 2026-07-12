@@ -256,6 +256,12 @@
           <p class="hint">Google Drive ใช้ scope drive.appdata และไฟล์ชื่อ i-have-money-backup.json ในพื้นที่แอปของบัญชี Google นั้น</p>
         </section>
 
+        <section class="panel restore-points-panel">
+          <div class="panel-head"><h2>จุดคืนค่าอัตโนมัติ</h2><span class="pill" id="storageUsage">-</span></div>
+          <p class="hint">ระบบสร้างจุดคืนค่าอัตโนมัติสูงสุด 5 จุดล่าสุดไว้ <b>ในเครื่องนี้เท่านั้น</b> ทุกครั้งก่อนนำข้อมูลกลับ จุดคืนค่าเก็บอยู่ใน localStorage เดียวกับข้อมูลหลัก จึงไม่ใช่ off-device backup — ถ้าล้างข้อมูลเว็บไซต์หรือเปลี่ยนเครื่อง จุดคืนค่าเหล่านี้จะหายไปพร้อมข้อมูลหลักด้วย แนะนำให้ Export เป็นไฟล์ JSON หรือ Sync ไป Google Drive แยกต่างหากเพื่อความปลอดภัยจริง</p>
+          <div id="restorePointList" class="restore-point-list"></div>
+        </section>
+
         <section class="panel">
           <div class="panel-head"><h2>บัญชี</h2></div>
           <p id="accountInfo" class="account-info"></p>

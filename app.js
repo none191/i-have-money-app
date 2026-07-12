@@ -89,7 +89,7 @@ async function init() {
 }
 
 function cacheElements() {
-  ["authScreen","appShell","loginTab","signupTab","loginForm","signupForm","loginEmail","loginPassword","signupName","signupEmail","signupPassword","googleLogin","googleLoginStatus","demoLogin","greeting","syncStatus","syncNow","themeToggle","monthBalance","monthIncome","monthExpense","todayNet","weekNet","monthCount","transactionForm","editId","date","amount","category","customCategory","categorySuggestions","categoryChips","note","receipt","receiptPreview","submitBtn","clearForm","calendarTitle","calendarGrid","selectedDateTitle","selectedDateTotal","transactionList","categoryReport","exportCsv","prevMonth","nextMonth","budgetForm","budgetCategory","budgetCustomCategory","expenseCategorySuggestions","budgetCategoryChips","budgetAmount","budgetList","budgetTotal","budgetMonthTitle","monthlyChart","syncMode","connectGoogleDrive","backupDrive","restoreDrive","backupJson","restoreJson","lastBackup","accountInfo","logoutBtn","appearanceMode","accentTheme","themePreviewText","themeSwatches","categoryForm","categoryType","categoryName","categoryIcon","categoryCount","showExpenseCats","showIncomeCats","customCategoryList","receiptDialog","receiptImage","closeReceipt"].forEach(id => els[id] = document.getElementById(id));
+  ["authScreen","appShell","loginTab","signupTab","loginForm","signupForm","loginEmail","loginPassword","signupName","signupEmail","signupPassword","googleLogin","googleLoginStatus","demoLogin","greeting","syncStatus","syncNow","themeToggle","monthBalance","monthIncome","monthExpense","todayNet","weekNet","monthCount","transactionForm","editId","date","amount","category","customCategory","categorySuggestions","categoryChips","note","receipt","receiptPreview","submitBtn","clearForm","calendarTitle","calendarGrid","selectedDateTitle","selectedDateTotal","transactionList","categoryReport","exportCsv","prevMonth","nextMonth","budgetForm","budgetCategory","budgetCustomCategory","expenseCategorySuggestions","budgetCategoryChips","budgetAmount","budgetList","budgetTotal","budgetMonthTitle","monthlyChart","syncMode","connectGoogleDrive","backupDrive","restoreDrive","backupJson","restoreJson","lastBackup","accountInfo","logoutBtn","appearanceMode","accentTheme","themePreviewText","themeSwatches","categoryForm","categoryType","categoryName","categoryIcon","categoryCount","showExpenseCats","showIncomeCats","customCategoryList","receiptDialog","receiptImage","closeReceipt","storageUsage","restorePointList"].forEach(id => els[id] = document.getElementById(id));
 }
 
 function bindAuthEvents() {
@@ -262,7 +262,7 @@ async function handleGoogleTokenResponse(response) {
     googleDriveAccessToken = accessToken;
     settings.googleDriveConnected = "true";
     settings.lastSyncError = "";
-    localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+    safeSetItem(SETTINGS_KEY, JSON.stringify(settings));
     renderSettings();
     if (shouldCheckDriveConflict && currentAuthProvider === "google") {
       shouldCheckDriveConflict = false;
@@ -275,7 +275,7 @@ async function handleGoogleTokenResponse(response) {
       } catch (error) {
         console.warn("Google Drive conflict check failed:", error);
         settings.lastSyncError = error.message || "Sync failed";
-        localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+        safeSetItem(SETTINGS_KEY, JSON.stringify(settings));
         setSyncStatus("failed");
       }
     }
@@ -317,7 +317,7 @@ async function onSignup(event) {
   if (password.length < 6) return alert("รหัสผ่านควรมีอย่างน้อย 6 ตัว");
   if (users.some(user => user.email === email)) return alert("อีเมลนี้สมัครไว้แล้ว");
   users.push({ name, email, passwordHash: await hashPassword(password), createdAt: new Date().toISOString() });
-  localStorage.setItem(USERS_KEY, JSON.stringify(users));
+  safeSetItem(USERS_KEY, JSON.stringify(users));
   startUser(email);
 }
 
@@ -331,7 +331,7 @@ async function onLogin(event) {
   if (user.password && !user.passwordHash) {
     user.passwordHash = await hashPassword(password);
     delete user.password;
-    localStorage.setItem(USERS_KEY, JSON.stringify(users));
+    safeSetItem(USERS_KEY, JSON.stringify(users));
   }
   startUser(email);
 }
@@ -340,13 +340,13 @@ function ensureDemoUser() {
   const users = loadJson(USERS_KEY, []);
   if (!users.some(user => user.email === "demo@ihavemoney.app")) {
     users.push({ name: "Demo User", email: "demo@ihavemoney.app", passwordHash: "demo-123456", createdAt: new Date().toISOString() });
-    localStorage.setItem(USERS_KEY, JSON.stringify(users));
+    safeSetItem(USERS_KEY, JSON.stringify(users));
   }
 }
 
 function startUser(email) {
   currentAuthProvider = "local";
-  localStorage.setItem(SESSION_KEY, JSON.stringify({ provider: "local", email }));
+  safeSetItem(SESSION_KEY, JSON.stringify({ provider: "local", email }));
   loginSession(email);
 }
 
@@ -364,7 +364,7 @@ function startGoogleUser(user) {
   };
   googleProfile = profile;
   currentAuthProvider = "google";
-  localStorage.setItem(SESSION_KEY, JSON.stringify({ provider: "google", email, user: profile }));
+  safeSetItem(SESSION_KEY, JSON.stringify({ provider: "google", email, user: profile }));
   loginSession(email, { provider: "google", id: profile.googleId, name: profile.name, picture: profile.picture, googleId: profile.googleId });
 }
 
@@ -402,6 +402,7 @@ function loginSession(email, options = {}) {
   renderCategoryManager();
   showView("dashboard");
   render();
+  reportCorruptedStorageIfAny();
 }
 
 function logout() {
@@ -510,8 +511,8 @@ function ensureCategoryBuckets() {
 }
 function saveCategories() {
   normalizeCategories();
-  localStorage.setItem(userKey("categories"), JSON.stringify(customCategories));
-  localStorage.setItem(userKey("categoryIcons"), JSON.stringify(customCategoryIcons));
+  safeSetItem(userKey("categories"), JSON.stringify(customCategories));
+  safeSetItem(userKey("categoryIcons"), JSON.stringify(customCategoryIcons));
 }
 function updateCategoryOptions() {
   const list = getCategories(selectedType);
@@ -690,7 +691,7 @@ function onSaveBudget(event) {
   const amount = Number(els.budgetAmount.value || 0);
   if (!Number.isFinite(amount) || amount < 0) return alert("กรุณาใส่งบประมาณให้ถูกต้อง");
   budgets[cat] = amount;
-  localStorage.setItem(userKey("budgets"), JSON.stringify(budgets));
+  safeSetItem(userKey("budgets"), JSON.stringify(budgets));
   saveCategories();
   els.budgetAmount.value = "";
   els.budgetCustomCategory.value = "";
@@ -784,7 +785,7 @@ function deleteItem(id) {
 function openReceipt(src) { els.receiptImage.src = src; els.receiptDialog.showModal(); }
 function moveMonth(delta) { currentMonth = new Date(currentMonth.getFullYear(), currentMonth.getMonth() + delta, 1); render(); }
 function saveTransactions() {
-  localStorage.setItem(userKey("transactions"), JSON.stringify(transactions));
+  safeSetItem(userKey("transactions"), JSON.stringify(transactions));
 }
 function groupSum(items, field) { return items.reduce((acc, item) => { const key = String(item[field] || "").trim(); if (!key || isReservedKey(key)) return acc; acc[key] = (acc[key] || 0) + Number(item.amount); return acc; }, Object.create(null)); }
 function sum(items) { return items.reduce((total, item) => total + Number(item.amount), 0); }
@@ -795,7 +796,61 @@ function toDateInputValue(date) { const tzOffset = date.getTimezoneOffset() * 60
 function filterByMonth(items, date) { const year = date.getFullYear(); const month = date.getMonth(); return items.filter(item => { const d = new Date(item.date + "T12:00:00"); return d.getFullYear() === year && d.getMonth() === month; }); }
 function filterCurrentWeek(items) { const today = new Date(); const day = (today.getDay() + 6) % 7; const monday = new Date(today); monday.setDate(today.getDate() - day); monday.setHours(0, 0, 0, 0); const sunday = new Date(monday); sunday.setDate(monday.getDate() + 6); sunday.setHours(23, 59, 59, 999); return items.filter(item => { const d = new Date(item.date + "T12:00:00"); return d >= monday && d <= sunday; }); }
 function formatThaiDate(dateStr) { return new Intl.DateTimeFormat("th-TH", { weekday: "long", day: "numeric", month: "long", year: "numeric" }).format(new Date(dateStr + "T12:00:00")); }
-function loadJson(key, fallback) { try { return JSON.parse(localStorage.getItem(key)) ?? fallback; } catch { return fallback; } }
+const corruptedStorageKeys = [];
+function loadJson(key, fallback) {
+  const raw = localStorage.getItem(key);
+  if (raw === null) return fallback;
+  try {
+    return JSON.parse(raw) ?? fallback;
+  } catch {
+    // Data existed under this key but was not valid JSON (corrupted write,
+    // manual tampering, or a browser storage bug). Track it instead of
+    // silently pretending the key was simply empty, so the user can be
+    // told which piece of their data reverted to defaults.
+    if (!corruptedStorageKeys.includes(key)) corruptedStorageKeys.push(key);
+    return fallback;
+  }
+}
+/**
+ * Wrapper around localStorage.setItem() that NEVER throws. setItem() throws
+ * a *synchronous* DOMException (QuotaExceededError) the moment storage is
+ * full — without this wrapper, that exception aborts whatever function was
+ * writing (login, saving a transaction, restoring a backup, ...) partway
+ * through, potentially leaving app state half-written. This wrapper catches
+ * that, reports a clear message to the user via reportStorageWriteFailure,
+ * and lets the caller decide how to proceed (see restoreFromBackupPayload
+ * for the rollback-aware caller).
+ */
+function safeSetItem(key, value) {
+  const result = window.IHM_STORAGE_SAFETY.trySetItem(localStorage, key, value);
+  if (!result.ok) reportStorageWriteFailure(result.classification, key);
+  return result.ok;
+}
+function reportStorageWriteFailure(classification, key) {
+  if (classification?.isQuotaError) {
+    alert(
+      "พื้นที่จัดเก็บข้อมูลในเครื่องเต็มแล้ว บันทึกข้อมูลล่าสุดไม่สำเร็จ\n" +
+      "ลองลบรูปใบเสร็จเก่าที่ไม่จำเป็น หรือ Export ข้อมูลเป็นไฟล์ JSON แล้วลบรายการเก่าบางส่วนออกจากเครื่องนี้"
+    );
+  } else if (classification?.isStorageUnavailable) {
+    alert(
+      "เบราว์เซอร์บล็อกการบันทึกข้อมูลในเครื่องนี้ (อาจอยู่ในโหมดส่วนตัว/Private Browsing)\n" +
+      "ข้อมูลที่เพิ่งทำอาจไม่ถูกบันทึกถาวร"
+    );
+  } else {
+    console.error("safeSetItem failed for key:", key);
+    alert("บันทึกข้อมูลไม่สำเร็จ กรุณาลองใหม่อีกครั้ง");
+  }
+}
+function reportCorruptedStorageIfAny() {
+  if (!corruptedStorageKeys.length) return;
+  const count = corruptedStorageKeys.length;
+  corruptedStorageKeys.length = 0;
+  alert(
+    `พบข้อมูล ${count} รายการในเครื่องนี้ที่เปิดอ่านไม่ได้ (ไฟล์เสีย) ระบบจึงใช้ค่าเริ่มต้นแทนในส่วนนั้นเพื่อให้แอปยังใช้งานต่อได้\n` +
+    "แนะนำให้ตรวจสอบข้อมูลของคุณ และ Restore จากไฟล์ Backup JSON หรือจุดคืนค่าอัตโนมัติล่าสุดถ้าจำเป็น"
+  );
+}
 function updateThemeColor() {
   const authVisible = els.authScreen && !els.authScreen.classList.contains("hidden");
   const color = authVisible ? "#faf7f1" : (getCss("--brand") || "#1f8a5b");
@@ -821,13 +876,13 @@ function applyAccent(accent) {
 }
 function setAppearance(theme) {
   applyTheme(theme);
-  localStorage.setItem(THEME_KEY, theme);
+  safeSetItem(THEME_KEY, theme);
   saveUserPreferences();
   renderMonthlyChart();
 }
 function setAccent(accent) {
   applyAccent(accent);
-  localStorage.setItem(ACCENT_KEY, accent);
+  safeSetItem(ACCENT_KEY, accent);
   saveUserPreferences();
   renderMonthlyChart();
 }
@@ -844,7 +899,7 @@ function saveUserPreferences() {
     accent: document.body.dataset.accent || "green",
     updatedAt: new Date().toISOString()
   };
-  localStorage.setItem(userKey("preferences"), JSON.stringify(prefs));
+  safeSetItem(userKey("preferences"), JSON.stringify(prefs));
 }
 function renderThemeOptions() {
   if (!els.themeSwatches) return;
@@ -957,7 +1012,7 @@ function renameCategory(type, oldName, newName) {
   if (Object.prototype.hasOwnProperty.call(budgets, oldName)) {
     budgets[newName] = budgets[oldName];
     delete budgets[oldName];
-    localStorage.setItem(userKey("budgets"), JSON.stringify(budgets));
+    safeSetItem(userKey("budgets"), JSON.stringify(budgets));
   }
   resetIconMap();
   saveCategories();
@@ -1010,31 +1065,53 @@ function backupJson() {
   downloadFile(`i-have-money-backup-${toDateInputValue(new Date())}.json`, JSON.stringify(payload, null, 2), "application/json");
   renderSettings();
 }
+const MAX_RESTORE_FILE_BYTES = 20 * 1024 * 1024; // 20 MB — generous for base64 receipts, still bounded
 function restoreJson(event) {
   const file = event.target.files?.[0];
   if (!file) return;
+  const looksLikeJson = file.type === "application/json" || file.type === "text/json" || file.type === "" || /\.json$/i.test(file.name || "");
+  if (!looksLikeJson) {
+    event.target.value = "";
+    alert("กรุณาเลือกไฟล์ .json เท่านั้น");
+    return;
+  }
+  if (file.size > MAX_RESTORE_FILE_BYTES) {
+    event.target.value = "";
+    alert(`ไฟล์ใหญ่เกินไป (${window.IHM_STORAGE_SAFETY.formatBytes(file.size)}) ไฟล์สำรองข้อมูลไม่ควรเกิน ${window.IHM_STORAGE_SAFETY.formatBytes(MAX_RESTORE_FILE_BYTES)}`);
+    return;
+  }
   const reader = new FileReader();
   reader.onload = () => {
     let data;
     try {
-      data = JSON.parse(reader.result);
+      data = window.IHM_BACKUP_SCHEMA.safeJsonParse(reader.result);
     } catch {
       event.target.value = "";
-      alert("ไฟล์สำรองข้อมูลไม่ถูกต้อง");
+      alert("ไฟล์สำรองข้อมูลไม่ถูกต้อง (เปิดอ่านเป็น JSON ไม่ได้)");
       return;
     }
     const confirmed = confirm(
       "นำข้อมูลกลับจากไฟล์ JSON จะเขียนทับข้อมูลปัจจุบันในเครื่องนี้\n" +
-      "ระบบจะสำรองข้อมูลปัจจุบันไว้อัตโนมัติก่อนเริ่มนำข้อมูลกลับ\n" +
+      "ระบบจะสร้างจุดคืนค่าของข้อมูลปัจจุบันไว้อัตโนมัติก่อนเริ่มนำข้อมูลกลับ\n" +
       "ต้องการดำเนินการต่อหรือไม่?"
     );
     if (!confirmed) {
       event.target.value = "";
       return;
     }
-    const restored = restoreFromBackupPayload(data);
+    let restored = false;
+    try {
+      restored = restoreFromBackupPayload(data);
+    } catch (error) {
+      console.error("restoreFromBackupPayload threw:", error);
+      alert(`นำข้อมูลกลับไม่สำเร็จ: ${error.message || "เกิดข้อผิดพลาดที่ไม่คาดคิด"}`);
+    }
     event.target.value = "";
     if (restored) alert("นำข้อมูลกลับเรียบร้อย");
+  };
+  reader.onerror = () => {
+    event.target.value = "";
+    alert("อ่านไฟล์ไม่สำเร็จ กรุณาลองใหม่อีกครั้ง");
   };
   reader.readAsText(file);
 }
@@ -1042,7 +1119,7 @@ function buildBackupPayload() {
   const updatedAt = new Date().toISOString();
   const safeSettings = normalizeSettings({ ...settings, lastBackup: updatedAt });
   settings = safeSettings;
-  localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+  safeSetItem(SETTINGS_KEY, JSON.stringify(settings));
   const user = currentUser ? {
     email: currentUser.email || "",
     name: currentUser.name || "",
@@ -1050,7 +1127,7 @@ function buildBackupPayload() {
   } : { email: "", name: "", googleId: "" };
   const payload = {
     app: "I Have Money",
-    version: 1,
+    version: window.IHM_BACKUP_SCHEMA.BACKUP_SCHEMA_VERSION,
     updatedAt,
     user,
     transactions: Array.isArray(transactions) ? transactions : [],
@@ -1063,9 +1140,38 @@ function buildBackupPayload() {
   warnIfBackupIsLarge(payload);
   return payload;
 }
-function restoreFromBackupPayload(payload) {
-  if (!payload || typeof payload !== "object") throw new Error("Invalid backup payload");
-  const backupEmail = String(payload.user?.email || "").trim().toLowerCase();
+/**
+ * Restore a backup payload safely:
+ *   1. Validate + normalize the ENTIRE payload in memory first (never
+ *      touches localStorage). Rejects the whole file if any transaction
+ *      fails validation — no partial import of "the good half" of a file,
+ *      since that could silently drop data the user expected to keep.
+ *   2. Warn (and allow cancelling) if the backup belongs to a different
+ *      Google account than the one currently signed in.
+ *   3. Snapshot every localStorage key about to be overwritten, then write
+ *      the new values. If any write fails partway through (most likely
+ *      QuotaExceededError), write the snapshotted values back immediately.
+ *      localStorage has no real transactions, so this is a best-effort
+ *      compensating rollback, not an atomic guarantee — see
+ *      lib/storageSafety.mjs for the two possible failure shapes this can
+ *      still leave behind, both surfaced to the user rather than hidden.
+ *   4. Only update the app's in-memory state (and re-render) after every
+ *      write has succeeded, so a failed restore never leaves the running
+ *      app showing data that does not match what is actually in storage.
+ */
+function restoreFromBackupPayload(rawPayload) {
+  if (!rawPayload || typeof rawPayload !== "object") throw new Error("Invalid backup payload");
+
+  const validation = window.IHM_BACKUP_SCHEMA.validateAndNormalizeBackupPayload(rawPayload);
+  if (!validation.ok) {
+    const shown = validation.errors.slice(0, 8);
+    const more = validation.errors.length > shown.length ? `\n...และอีก ${validation.errors.length - shown.length} ข้อ` : "";
+    alert(`ไฟล์สำรองข้อมูลไม่ผ่านการตรวจสอบ ยังไม่มีการเปลี่ยนแปลงข้อมูลใด ๆ:\n\n${shown.map(e => `• ${e}`).join("\n")}${more}`);
+    return false;
+  }
+  const payload = validation.normalized;
+
+  const backupEmail = payload.user.email;
   const activeEmail = String(currentUser?.email || "").trim().toLowerCase();
   if (backupEmail && activeEmail && backupEmail !== activeEmail) {
     const proceed = confirm(
@@ -1076,29 +1182,63 @@ function restoreFromBackupPayload(payload) {
     );
     if (!proceed) return false;
   }
-  createAutomaticLocalBackup();
-  transactions = Array.isArray(payload.transactions) ? payload.transactions.filter(item => item && typeof item === "object") : [];
-  budgets = normalizeBudgets(payload.budgets);
-  saveTransactions();
-  localStorage.setItem(userKey("budgets"), JSON.stringify(budgets));
-  customCategories = normalizeBackupCategories(payload.categories);
-  customCategoryIcons = normalizeBackupCategoryIcons(payload.categoryIcons);
+
+  createRestorePoint();
+
+  // Only touch settings/preferences keys if the incoming file actually
+  // declared them — an omitted field must leave the user's current
+  // settings/preferences untouched, not reset them to blank defaults.
+  const hasPreferences = rawPayload.preferences !== undefined && rawPayload.preferences !== null;
+  const hasSettings = rawPayload.settings !== undefined && rawPayload.settings !== null;
+  const finalSettings = hasSettings
+    ? normalizeSettings({ ...payload.settings, lastBackup: payload.updatedAt || rawPayload.exportedAt || payload.settings.lastBackup || settings.lastBackup || "" })
+    : null;
+
+  const keysToWrite = [userKey("transactions"), userKey("budgets"), userKey("categories"), userKey("categoryIcons")];
+  if (hasPreferences) keysToWrite.push(userKey("preferences"));
+  if (hasSettings) keysToWrite.push(SETTINGS_KEY);
+  const snapshot = window.IHM_STORAGE_SAFETY.snapshotKeys(localStorage, keysToWrite);
+
+  let writeFailed = false;
+  writeFailed = !safeSetItem(userKey("transactions"), JSON.stringify(payload.transactions)) || writeFailed;
+  writeFailed = !safeSetItem(userKey("budgets"), JSON.stringify(payload.budgets)) || writeFailed;
+  writeFailed = !safeSetItem(userKey("categories"), JSON.stringify(payload.categories)) || writeFailed;
+  writeFailed = !safeSetItem(userKey("categoryIcons"), JSON.stringify(payload.categoryIcons)) || writeFailed;
+  if (hasPreferences) writeFailed = !safeSetItem(userKey("preferences"), JSON.stringify(payload.preferences)) || writeFailed;
+  if (hasSettings) writeFailed = !safeSetItem(SETTINGS_KEY, JSON.stringify(finalSettings)) || writeFailed;
+
+  if (writeFailed) {
+    const failedKeys = window.IHM_STORAGE_SAFETY.restoreSnapshot(localStorage, snapshot);
+    alert(
+      "การนำข้อมูลกลับล้มเหลวระหว่างเขียนข้อมูล ระบบพยายามคืนค่าข้อมูลเดิมกลับให้แล้ว\n" +
+      "(localStorage ไม่รองรับ transaction จริง การคืนค่านี้จึงเป็นความพยายามที่ดีที่สุด ไม่ใช่การรับประกัน 100%)\n" +
+      (failedKeys.length
+        ? `พบ ${failedKeys.length} รายการที่คืนค่าไม่สำเร็จ กรุณาลบข้อมูล/รูปใบเสร็จเก่าบางส่วนเพื่อเพิ่มพื้นที่ว่าง แล้วลองใหม่`
+        : "ข้อมูลเดิมถูกคืนค่าเรียบร้อยแล้ว แอปยังใช้งานได้ตามปกติ")
+    );
+    // In-memory state (transactions/budgets/etc. module variables) was never
+    // reassigned above — only localStorage was touched — so the running app
+    // is already consistent with the just-restored snapshot. No further
+    // in-memory rollback is needed.
+    return false;
+  }
+
+  transactions = payload.transactions;
+  budgets = payload.budgets;
+  customCategories = payload.categories;
+  customCategoryIcons = payload.categoryIcons;
   resetIconMap();
-  saveCategories();
-  if (payload.preferences) {
-    localStorage.setItem(userKey("preferences"), JSON.stringify(payload.preferences));
-    loadUserPreferences();
-  }
-  if (payload.settings) {
-    settings = normalizeSettings({ ...payload.settings, lastBackup: payload.updatedAt || payload.exportedAt || payload.settings.lastBackup || settings.lastBackup || "" });
-    localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
-    loadSettingsToForm();
-  }
+  if (hasSettings) settings = finalSettings;
+  if (hasPreferences) loadUserPreferences();
+  loadSettingsToForm();
   renderThemeOptions();
   updateCategoryOptions();
   updateBudgetOptions();
   renderCategoryManager();
   render();
+  renderSettings();
+
+  if (validation.warnings?.length) alert(validation.warnings.join("\n"));
   return true;
 }
 function normalizeBackupCategories(value) {
@@ -1116,7 +1256,14 @@ function normalizeBackupCategoryIcons(value) {
       .filter(([cat, icon]) => cat && icon && !isReservedKey(cat))
   );
 }
-function createAutomaticLocalBackup() {
+// Renamed from "createAutomaticLocalBackup": this snapshot lives in the same
+// localStorage origin/quota as the app's main data (key AUTO_LOCAL_BACKUP_KEY
+// is unchanged for backward compatibility with anything already saved on a
+// user's device). It is NOT an off-device backup — clearing site data or
+// switching devices deletes it along with everything else. The UI calls
+// this a "จุดคืนค่า" (restore point) rather than "Auto Local Backup" to make
+// that distinction clear to the user.
+function createRestorePoint() {
   if (!currentUser) return;
   const backups = loadJson(AUTO_LOCAL_BACKUP_KEY, []);
   const snapshot = {
@@ -1125,7 +1272,60 @@ function createAutomaticLocalBackup() {
     payload: buildBackupPayload()
   };
   backups.unshift(snapshot);
-  localStorage.setItem(AUTO_LOCAL_BACKUP_KEY, JSON.stringify(backups.slice(0, 5)));
+  // NOTE: this 5-slot buffer is currently shared across every local account
+  // on the same device/browser (not namespaced per user beyond the
+  // `userKey` field used for display filtering below) — a heavy user
+  // switching between multiple local accounts on one device could evict
+  // another account's restore points sooner than expected. Tracked as a
+  // known limitation; namespacing this key per-account is a larger storage
+  // migration left for a future pass rather than folded into this change.
+  safeSetItem(AUTO_LOCAL_BACKUP_KEY, JSON.stringify(backups.slice(0, 5)));
+}
+function currentUserStorageKey() {
+  return currentUser?.storageKey || currentUser?.email || "";
+}
+function renderRestorePoints() {
+  if (!els.restorePointList) return;
+  const all = loadJson(AUTO_LOCAL_BACKUP_KEY, []);
+  const mine = all.filter(entry => entry.userKey === currentUserStorageKey());
+  if (!mine.length) {
+    els.restorePointList.innerHTML = `<p class="hint">ยังไม่มีจุดคืนค่าในเครื่องนี้ ระบบจะสร้างให้อัตโนมัติก่อนนำข้อมูลกลับครั้งถัดไป</p>`;
+    return;
+  }
+  const formatter = new Intl.DateTimeFormat("th-TH", { dateStyle: "medium", timeStyle: "short" });
+  els.restorePointList.innerHTML = mine.map((entry, index) => {
+    const count = Array.isArray(entry.payload?.transactions) ? entry.payload.transactions.length : 0;
+    const when = formatter.format(new Date(entry.createdAt));
+    return `<div class="restore-point-item"><span>${escapeHtml(when)} • ${count} รายการ</span><button type="button" class="ghost-btn btn btn-secondary restore-point-btn" data-index="${index}">กู้คืนจุดนี้</button></div>`;
+  }).join("");
+  els.restorePointList.querySelectorAll(".restore-point-btn").forEach(btn => {
+    btn.addEventListener("click", () => restoreFromRestorePoint(Number(btn.dataset.index)));
+  });
+}
+function restoreFromRestorePoint(index) {
+  const all = loadJson(AUTO_LOCAL_BACKUP_KEY, []);
+  const mine = all.filter(entry => entry.userKey === currentUserStorageKey());
+  const entry = mine[index];
+  if (!entry) return;
+  const formatter = new Intl.DateTimeFormat("th-TH", { dateStyle: "medium", timeStyle: "short" });
+  const confirmed = confirm(
+    `กู้คืนข้อมูลกลับไปเป็นจุดคืนค่าเมื่อ ${formatter.format(new Date(entry.createdAt))} ใช่ไหม?\n` +
+    "ข้อมูลปัจจุบันในเครื่องนี้จะถูกเขียนทับ (ระบบจะสร้างจุดคืนค่าใหม่ของสถานะปัจจุบันไว้ก่อนเช่นกัน)"
+  );
+  if (!confirmed) return;
+  let restored = false;
+  try {
+    restored = restoreFromBackupPayload(entry.payload);
+  } catch (error) {
+    console.error("restoreFromRestorePoint threw:", error);
+    alert(`กู้คืนไม่สำเร็จ: ${error.message || "เกิดข้อผิดพลาดที่ไม่คาดคิด"}`);
+  }
+  if (restored) alert("กู้คืนข้อมูลจากจุดคืนค่าเรียบร้อย");
+}
+function renderStorageUsage() {
+  if (!els.storageUsage) return;
+  const bytes = window.IHM_STORAGE_SAFETY.estimateStorageUsageBytes(localStorage);
+  els.storageUsage.textContent = `ใช้พื้นที่ ~${window.IHM_STORAGE_SAFETY.formatBytes(bytes)}`;
 }
 function warnIfBackupIsLarge(payload) {
   const sizeMb = new Blob([JSON.stringify(payload)]).size / (1024 * 1024);
@@ -1223,13 +1423,13 @@ async function syncToGoogleDrive() {
     settings.lastBackup = payload.updatedAt;
     settings.lastSync = result.modifiedTime || payload.updatedAt;
     settings.lastSyncError = "";
-    localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+    safeSetItem(SETTINGS_KEY, JSON.stringify(settings));
     renderSettings();
     alert("สำรองข้อมูลไป Google Drive เรียบร้อย");
   } catch (error) {
     console.warn("Google Drive backup failed:", error);
     settings.lastSyncError = error.message || "Sync failed";
-    localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+    safeSetItem(SETTINGS_KEY, JSON.stringify(settings));
     setSyncStatus("failed");
     alert("สำรองข้อมูลไป Google Drive ไม่สำเร็จ");
   }
@@ -1262,13 +1462,13 @@ async function syncFromGoogleDrive() {
     settings.googleDriveConnected = "true";
     settings.lastSync = new Date().toISOString();
     settings.lastSyncError = "";
-    localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+    safeSetItem(SETTINGS_KEY, JSON.stringify(settings));
     renderSettings();
     alert("ดึงข้อมูลจาก Google Drive เรียบร้อย");
   } catch (error) {
     console.warn("Google Drive restore failed:", error);
     settings.lastSyncError = error.message || "Sync failed";
-    localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+    safeSetItem(SETTINGS_KEY, JSON.stringify(settings));
     setSyncStatus("failed");
     alert("ดึงข้อมูลจาก Google Drive ไม่สำเร็จ");
   }
@@ -1346,7 +1546,7 @@ function loadSettingsToForm() {
 }
 function saveSettingsFromForm() {
   settings = normalizeSettings({ ...settings, syncMode: els.syncMode.value, lastBackup: settings.lastBackup || "" });
-  localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+  safeSetItem(SETTINGS_KEY, JSON.stringify(settings));
   renderSettings();
 }
 async function syncNow() {
@@ -1364,6 +1564,8 @@ function renderSettings() {
   els.syncStatus.textContent = modeName;
   els.lastBackup.textContent = settings.lastBackup ? `Last backup: ${new Intl.DateTimeFormat("th-TH", { dateStyle: "medium", timeStyle: "short" }).format(new Date(settings.lastBackup))}` : "Last backup: ยังไม่มี";
   els.accountInfo.textContent = `${currentUser?.name || "ผู้ใช้"} • ${currentUser?.email || ""}${currentAuthProvider === "google" ? " • Google Account" : ""}`;
+  renderRestorePoints();
+  renderStorageUsage();
 }
 function getSyncStatusLabel() {
   if (settings.lastSyncError) return "Sync failed";
@@ -1388,7 +1590,7 @@ function seedExampleDataIfEmpty() {
   customCategoryIcons = { "รายได้เสริม": "💵", "ค่าแมว": "🐱", "ค่าโฆษณา": "📣" };
   resetIconMap();
   saveTransactions();
-  localStorage.setItem(userKey("budgets"), JSON.stringify(budgets));
+  safeSetItem(userKey("budgets"), JSON.stringify(budgets));
   saveCategories();
 }
 function offsetDate(days) { const d = new Date(); d.setDate(d.getDate() + days); return toDateInputValue(d); }
