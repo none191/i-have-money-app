@@ -26,6 +26,28 @@ Mobile-first PWA สำหรับจดรายรับรายจ่าย
 
 แนวทางปัจจุบันไม่ใช้ Supabase แล้ว ข้อมูลหลักยังอยู่ใน `localStorage` เพื่อใช้งาน offline และสามารถซิงก์/สำรองเป็นไฟล์ `i-have-money-backup.json` ใน Google Drive appDataFolder ของบัญชี Google ผู้ใช้
 
+## Development / Testing
+โปรเจกต์นี้ไม่มี build step (ไม่มี bundler) แต่มี unit test runtime แบบเบา ใช้ `node:test` ในตัว Node.js ไม่มี dependency ภายนอก
+
+```bash
+npm test          # รัน unit tests ทั้งหมด (tests/*.test.mjs) — เร็ว ไม่ต้องมี Docker/nginx
+npm run test:smoke  # ตรวจ nginx -t + docker compose config เสมอ, ตรวจ container จริงถ้ามี Docker daemon
+```
+
+Logic ที่ไม่ผูกกับ DOM/localStorage (validation, migration, storage-error handling, service worker routing, CSV escaping) แยกไว้ที่ `lib/*.mjs` เพื่อให้ test ได้ตรง ๆ โดยไม่ต้องจำลอง browser — ดูรายละเอียดใน `PROJECT_MEMORY.md`
+
+### รัน production ด้วย Docker
+```bash
+# local/generic (ไฟล์ base อย่างเดียว)
+docker compose up -d
+
+# NAS/production (base + override เฉพาะ NAS: pin nginx version, healthcheck, logging, no-new-privileges)
+docker compose -f docker-compose.yml -f docker-compose.nas.yml up -d
+
+# ตรวจค่าที่ merge แล้วก่อน apply จริง
+docker compose -f docker-compose.yml -f docker-compose.nas.yml config
+```
+
 ## วิธีเปิดใช้งาน
 1. แตกไฟล์ ZIP
 2. เปิด `index.html` ด้วยเบราว์เซอร์
@@ -223,3 +245,34 @@ python3 -m http.server 8080
 
 **ไฟล์ที่เปลี่ยน**: `service-worker.js`, `index.html`, `icons/login/login-brand-transparent.png`
 **ไฟล์ที่ลบ**: `icon.svg`, `icon-maskable.svg`, `icons/login/login-brand.png`, `icons/menu/login-brand.png`
+
+## Safety & PWA Hardening Pass (branch: improve/safety-pwa-hardening)
+
+รอบตรวจสอบและแก้ไขที่ครอบคลุม Backup/Restore, localStorage safety, Service Worker/PWA, nginx, Docker/NAS และ Tests/CI ตาม findings report (Critical/High/Medium/Low) — **ไม่แก้ระบบ Login, ไม่เพิ่ม Supabase/backend ใหม่, ไม่ deploy ไป NAS**
+
+### Critical
+- **Restore ปลอดภัยขึ้นทั้งหมด**: `restoreFromBackupPayload()` validate + normalize ข้อมูลทั้งไฟล์ใน memory ก่อนเสมอ (ผ่าน `lib/backupSchema.mjs`), ปฏิเสธทั้งไฟล์ถ้ามี transaction ใดผิด schema (ไม่ import บางส่วน), snapshot ทุก key ที่จะเขียนทับก่อนเขียนจริง แล้วคืนค่ากลับถ้าเขียนล้มเหลว (`lib/storageSafety.mjs`) — ระบุชัดเจนว่า localStorage ไม่มี transaction จริง จึงเป็น best-effort ไม่ใช่ atomic 100%
+- **`localStorage.setItem` ทั้ง 26 จุดครอบด้วย `safeSetItem()`**: จับ `QuotaExceededError` (synchronous throw) แล้วแจ้งผู้ใช้ชัดเจนแทนที่จะปล่อยให้แอป crash กลางฟังก์ชัน
+
+### High
+- **Service Worker เขียนใหม่เป็น module worker**: import `lib/swPolicy.mjs` เพื่อ classify ทุก request ก่อนตัดสินใจ cache — cross-origin (Google API) ไม่ถูก intercept เลย, navigation ใช้ network-first + fallback index.html เฉพาะตอน offline จริง, static asset ใช้ stale-while-revalidate และ**ไม่คืน index.html ให้ image/script/API ที่ fail**
+- **Backup schema validation ระดับ field**: ตรวจ type/amount/date/category ของทุก transaction, ตรวจ version พร้อม migration path (`BACKUP_SCHEMA_VERSION`), ป้องกัน prototype pollution ทุกชั้นของ JSON
+- **nginx security headers**: เพิ่ม CSP (เริ่ม Report-Only), X-Content-Type-Options, X-Frame-Options, Referrer-Policy, Permissions-Policy ผ่าน shared snippet (แก้ nginx gotcha: add_header ใน location บล็อกการ inherit จาก server level)
+- **บล็อกไฟล์ที่ไม่ควร serve**: `.git/`, `README.md`, `PROJECT_MEMORY.md`, `docker-compose*.yml`, `docs/*.sql` ถูก deny แล้ว (เดิม mount ทั้ง repo เข้า nginx โดยไม่มีการกันเลย)
+
+### Medium
+- เพิ่ม UI "จุดคืนค่าอัตโนมัติ" ใน Settings — กู้คืนได้สูงสุด 5 จุดล่าสุด พร้อมข้อความอธิบายว่าไม่ใช่ off-device backup
+- เพิ่ม update notification banner สำหรับ Service Worker เวอร์ชันใหม่ พร้อมปุ่ม "รีโหลดเพื่ออัปเดต"
+- แยก `docker-compose.yml` (generic) กับ `docker-compose.nas.yml` (override เฉพาะ production: pin nginx version, healthcheck, logging rotation, no-new-privileges)
+- `restoreJson()` ตรวจ file type และจำกัดขนาดไฟล์ 20 MB ก่อน parse
+
+### Tests
+- เพิ่ม `package.json` + `node --test` เป็น test runtime (ไม่มี dependency ภายนอก)
+- 63 unit tests ครอบคลุม backup validation/migration, prototype pollution, storage quota handling, service worker routing, CSV formula-injection escaping
+- `tests/nginx-docker-smoke.sh`: ตรวจ `nginx -t` และ `docker compose config` เสมอ, ตรวจ container จริงถ้ามี Docker daemon
+- ทดสอบ end-to-end ด้วย headless Chromium จริง (ไม่ใช่แค่อ่านโค้ด): restore rollback ตอน quota เต็ม, prototype pollution neutralization, cross-account warning, offline navigation fallback, security headers ผ่าน curl
+
+### ยังไม่ได้ทำ (ตั้งใจ, มีเหตุผลระบุไว้)
+- CSP ยังเป็น Report-Only — ต้อง verify กับ Google Login/Drive จริงบน staging ก่อน flip เป็น enforcing (sandbox ตรวจไม่ได้เพราะไม่มี network เข้า Google)
+- ไม่เพิ่ม `read_only`/non-root ให้ nginx container — ต้องทดสอบกับ UGOS ACL ก่อน (ดู comment ใน `docker-compose.nas.yml`)
+- ไม่ migrate รูปใบเสร็จไป IndexedDB — ประเมินไว้ใน `docs/receipt-storage-assessment.md` แล้ว แต่เป็นงานแยกที่กระทบ backup/restore format
