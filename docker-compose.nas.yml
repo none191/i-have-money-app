@@ -1,0 +1,54 @@
+# NAS/production override. Apply together with the base file:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.nas.yml up -d
+#   docker compose -f docker-compose.yml -f docker-compose.nas.yml config   (to review the merged result before applying)
+#
+# Intentionally NOT included here yet: `read_only: true` / running nginx as
+# a non-root user. Both need to be verified against UGREEN UGOS's Shared
+# Folder ACL behavior first (UGOS bind-mount permission handling has known
+# quirks that differ from a standard Linux host) -- see the "Future
+# hardening (manual verification required)" note at the bottom of this file
+# for the steps to test this safely on a staging container before ever
+# applying it to the production NAS path. Do not run chmod/chown against
+# the production NAS folder to "make read_only work" without that
+# verification -- get the permissions right in a disposable test container
+# first.
+services:
+  i-have-money-app:
+    # Pin an exact nginx version instead of the floating `alpine` tag, so
+    # `docker compose pull` on the NAS is reproducible and doesn't silently
+    # pick up a new major version. Bump deliberately, not automatically.
+    image: nginx:1.27-alpine
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost/index.html"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+# --- Future hardening (manual verification required, NOT applied here) ----
+#
+# To test `read_only: true` safely before enabling it on the production NAS
+# container, in a *disposable* test container (not the production one):
+#
+#   1. Add to this override, on a throwaway copy first:
+#        read_only: true
+#        tmpfs:
+#          - /var/cache/nginx
+#          - /var/run
+#   2. `docker compose -f docker-compose.yml -f docker-compose.nas.yml up -d`
+#      against a *test* copy of the folder, not /volume1/WebApp/i-have-money-app.
+#   3. Confirm nginx starts cleanly (`docker logs i-have-money-app`) and the
+#      app is reachable -- nginx needs to write to /var/cache/nginx and
+#      /var/run (pid file) even when otherwise read-only.
+#   4. Only after that passes on a disposable test container, consider
+#      applying it to production, coordinating the NAS Shared Folder ACL
+#      change (if any is needed) separately and manually -- this repo/PR
+#      does not perform any chmod/chown against the NAS.

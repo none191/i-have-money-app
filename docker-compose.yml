@@ -1,3 +1,14 @@
+# Base compose file. Generic and portable on purpose -- no NAS-specific
+# paths, ports, or operational tuning here. Anyone can run
+# `docker compose up -d` from a clone of this repo and get a working local
+# instance. Production/NAS-only concerns (pinned image version, healthcheck,
+# logging rotation, security_opt) live in docker-compose.nas.yml and are
+# applied as an override:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.nas.yml up -d
+#
+# See PROJECT_MEMORY.md for why this split exists (deployment configuration
+# drift between this repo and whatever is actually running on the NAS).
 services:
   i-have-money-app:
     image: nginx:alpine
@@ -8,3 +19,4 @@ services:
     volumes:
       - ./:/usr/share/nginx/html:ro
       - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./nginx-security-headers.conf:/etc/nginx/snippets/security-headers.conf:ro
