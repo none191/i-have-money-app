@@ -89,7 +89,7 @@ async function init() {
 }
 
 function cacheElements() {
-  ["authScreen","appShell","loginTab","signupTab","loginForm","signupForm","loginEmail","loginPassword","signupName","signupEmail","signupPassword","googleLogin","googleLoginStatus","demoLogin","greeting","syncStatus","syncNow","themeToggle","monthBalance","monthIncome","monthExpense","todayNet","weekNet","monthCount","transactionForm","editId","date","amount","category","customCategory","categorySuggestions","categoryChips","note","receipt","receiptPreview","submitBtn","clearForm","calendarTitle","calendarGrid","selectedDateTitle","selectedDateTotal","transactionList","categoryReport","exportCsv","prevMonth","nextMonth","budgetForm","budgetCategory","budgetCustomCategory","expenseCategorySuggestions","budgetCategoryChips","budgetAmount","budgetList","budgetTotal","budgetMonthTitle","monthlyChart","syncMode","connectGoogleDrive","backupDrive","restoreDrive","backupJson","restoreJson","lastBackup","accountInfo","logoutBtn","appearanceMode","accentTheme","themePreviewText","themeSwatches","categoryForm","categoryType","categoryName","categoryIcon","categoryCount","showExpenseCats","showIncomeCats","customCategoryList","receiptDialog","receiptImage","closeReceipt","storageUsage","restorePointList"].forEach(id => els[id] = document.getElementById(id));
+  ["authScreen","appShell","loginTab","signupTab","loginForm","signupForm","loginEmail","loginPassword","signupName","signupEmail","signupPassword","googleLogin","googleLoginStatus","demoLogin","greeting","syncStatus","syncNow","themeToggle","monthBalance","monthIncome","monthExpense","todayNet","weekNet","monthCount","transactionForm","editId","date","amount","category","customCategory","categorySuggestions","categoryChips","note","receipt","receiptPreview","submitBtn","clearForm","calendarTitle","calendarGrid","selectedDateTitle","selectedDateTotal","transactionList","categoryReport","exportCsv","prevMonth","nextMonth","budgetForm","budgetCategory","budgetCustomCategory","expenseCategorySuggestions","budgetCategoryChips","budgetAmount","budgetList","budgetTotal","budgetMonthTitle","monthlyChart","syncMode","connectGoogleDrive","backupDrive","restoreDrive","backupJson","restoreJson","lastBackup","accountInfo","logoutBtn","appearanceMode","accentTheme","themePreviewText","themeSwatches","categoryForm","categoryType","categoryName","categoryIcon","categoryCount","showExpenseCats","showIncomeCats","customCategoryList","receiptDialog","receiptImage","closeReceipt","storageUsage","restorePointList","updateBanner","updateReloadBtn"].forEach(id => els[id] = document.getElementById(id));
 }
 
 function bindAuthEvents() {
@@ -1617,4 +1617,38 @@ async function verifyPassword(user, password) {
   if (user.passwordHash) return user.passwordHash === await hashPassword(password);
   return user.password === password;
 }
-function registerServiceWorker() { if ("serviceWorker" in navigator) navigator.serviceWorker.register("service-worker.js").catch(() => {}); }
+function registerServiceWorker() {
+  if (!("serviceWorker" in navigator)) return;
+  navigator.serviceWorker.register("service-worker.js", { type: "module" }).then(registration => {
+    // A worker already waiting (e.g. the tab was open when a new version
+    // finished installing in the background) — offer the update immediately.
+    if (registration.waiting) showUpdateBanner(registration);
+    registration.addEventListener("updatefound", () => {
+      const newWorker = registration.installing;
+      if (!newWorker) return;
+      newWorker.addEventListener("statechange", () => {
+        // "installed" while there's already an active controller means this
+        // is an UPDATE (not the very first install on this device), and the
+        // new worker is now sitting in "waiting" because service-worker.js
+        // no longer calls self.skipWaiting() automatically.
+        if (newWorker.state === "installed" && navigator.serviceWorker.controller) {
+          showUpdateBanner(registration);
+        }
+      });
+    });
+  }).catch(() => {});
+
+  let reloadedAfterUpdate = false;
+  navigator.serviceWorker.addEventListener("controllerchange", () => {
+    if (reloadedAfterUpdate) return;
+    reloadedAfterUpdate = true;
+    window.location.reload();
+  });
+}
+function showUpdateBanner(registration) {
+  if (!els.updateBanner || !els.updateReloadBtn) return;
+  els.updateBanner.classList.remove("hidden");
+  els.updateReloadBtn.onclick = () => {
+    registration.waiting?.postMessage("SKIP_WAITING");
+  };
+}

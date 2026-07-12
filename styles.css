@@ -83,6 +83,14 @@ h2 { font-size: 18px; }
 .eyebrow { margin: 0 0 2px; color: var(--muted); font-size: 12px; letter-spacing: .08em; text-transform: uppercase; }
 .lead { color: var(--muted); line-height: 1.55; margin-top: 10px; }
 .hint { display: block; color: var(--muted); font-size: 12px; line-height: 1.45; margin-top: 6px; }
+.update-banner {
+  position: fixed; top: 0; left: 0; right: 0; z-index: 999;
+  display: flex; align-items: center; justify-content: center; gap: 12px;
+  padding: 10px 16px; padding-top: calc(10px + env(safe-area-inset-top));
+  background: var(--brand); color: #fff; font-size: 13px; font-weight: 800;
+  box-shadow: 0 4px 12px rgba(0,0,0,.12);
+}
+.update-banner button { background: #fff; color: var(--brand); border: none; border-radius: 999px; padding: 6px 14px; font-weight: 900; }
 .auth-screen {
   width: min(100%, 480px);
   min-height: 100vh;
